@@ -149,12 +149,18 @@
       </div>
     </div>
     <div class="player-stage" id="playerStage"></div>
+    <!-- v15: obvious sound helper. Sits above the video, never inside the embed. -->
+    <button class="sound-helper" id="soundHelperBtn" type="button" hidden aria-pressed="false">
+      <span id="soundHelperIcon" aria-hidden="true">🔇</span><span id="soundHelperText">Tap for sound</span>
+    </button>
+    <div class="sound-hint" id="soundHint" hidden></div>
     <div class="player-actions" id="playerActions">
       <a class="btn btn-small" id="openOriginalBtn" target="_blank" rel="noopener noreferrer">Open original ↗</a>
       <button class="btn btn-small" id="fbEmbedToggleBtn" hidden>Try post embed</button>
       <button class="btn btn-small" id="copyLinkBtn">Copy link</button>
       <button class="btn btn-small" id="favBtn">☆ Favorite</button>
       <button class="btn btn-small" id="watchedBtn">Mark watched</button>
+      <button class="btn btn-small" id="soundActionBtn" type="button" aria-pressed="false">🔇 Enable sound</button>
       <button class="btn btn-small" id="editBtn">Edit</button>
       <button class="btn btn-small btn-danger" id="deleteBtn">Delete</button>
       <span class="embed-note">Playback blocked? Use “Open original” — some posts require login or disallow embedding.</span>
@@ -165,6 +171,7 @@
     <div class="fs-bar" id="fsBar">
       <button class="fs-btn" id="fsPrevBtn" title="Previous (←)">‹</button>
       <button class="fs-btn" id="fsNextBtn" title="Next (→)">›</button>
+      <button class="fs-btn" id="fsSoundBtn" title="Enable sound (S)" aria-pressed="false">🔇 Sound</button>
       <button class="fs-btn" id="fsFavBtn" title="Favorite">☆</button>
       <button class="fs-btn fs-btn-primary" id="fsMoreBtn" title="More actions (M)" aria-pressed="false">More ⋯</button>
       <button class="fs-btn" id="fsFullPostBtn" aria-pressed="false">Show full post</button>
@@ -205,6 +212,10 @@
       <div class="fs-more-row">
         <span>Autoplay</span>
         <button class="fs-btn" id="fsAutoplayBtn" aria-pressed="true">On</button>
+      </div>
+      <div class="fs-more-row">
+        <span>Remember sound</span>
+        <button class="fs-btn" id="fsSoundRememberBtn" aria-pressed="true">On</button>
       </div>
       <div class="fs-more-row">
         <label for="fsAdvanceSelect">Advance after</label>

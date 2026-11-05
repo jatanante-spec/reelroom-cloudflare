@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v14";
+  const REELROOM_VERSION = "v15";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -643,6 +643,7 @@
       const p = $("#cropAdjust"); if (p) { p.hidden = true; p.classList.remove("open"); }
       const ab = $("#fsAdjustBtn"); if (ab) ab.setAttribute("aria-pressed", "false");
     }
+    updateSoundUI();
   }
 
   // ---- v13 More panel: occasional actions without cluttering the big view ----
@@ -677,6 +678,8 @@
     const mo = $("#fsMoreOriginalBtn"); if (mo) mo.href = active.url || safeUrl(item.canonical_url || item.url);
     const mb = $("#fsMoreBackupBtn"); if (mb) mb.textContent = hasBackup ? "Change backup link" : "Add backup link";
     const ap = $("#fsAutoplayBtn"); if (ap) { ap.textContent = prefs.autoplay ? "On" : "Off"; ap.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
+    const rem = $("#fsSoundRememberBtn"); if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
+    updateSoundUI();
     const adv = $("#fsAdvanceSelect"); if (adv) adv.value = String(prefs.advanceSecs);
     const igRow = $("#fsMoreIgRow"); if (igRow) igRow.hidden = !state.igActive;
     const fp = $("#fsMoreFullPostBtn"); if (fp) { fp.textContent = prefs.igFullPost ? "Crop to video" : "Show full post"; fp.setAttribute("aria-pressed", String(!!prefs.igFullPost)); }
@@ -690,7 +693,7 @@
       return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
     }
     if (state.playerView === "big" && inFullscreen()) {
-      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
+      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
         .map((s) => $(s)).filter(isVisible);
     }
     return [];
@@ -724,6 +727,142 @@
     renderPlayer(item);
   }
 
+  // ================= v15: sound helper =================
+  // Browsers/platforms often start embeds muted so autoplay is reliable. ReelRoom
+  // makes that state obvious, offers one-tap unmute where the platform allows it,
+  // and remembers the choice for this browser session.
+  const SOUND_SESSION_KEY = "reelroom.sound.session.v1";
+  const sound = { status: "muted", fallback: false, platform: "", sessionOn: false, confirmTimer: null };
+  function loadSoundSession() { try { return sessionStorage.getItem(SOUND_SESSION_KEY) === "on"; } catch { return false; } }
+  function saveSoundSession(on) { try { if (on) sessionStorage.setItem(SOUND_SESSION_KEY, "on"); else sessionStorage.removeItem(SOUND_SESSION_KEY); } catch {} }
+  sound.sessionOn = loadSoundSession();
+  function soundRememberOn() { return prefs.soundRemember !== false; }
+  function canHostUnmute(platform) { return platform === "youtube" || platform === "tiktok"; }
+  function shouldStartMuted(platform) {
+    if (!soundRememberOn() || !sound.sessionOn) return true;
+    return !canHostUnmute(platform);
+  }
+  function rememberSound() {
+    if (!soundRememberOn()) return;
+    sound.sessionOn = true; saveSoundSession(true);
+  }
+  function applySoundParams(platform, url) {
+    if (!url) return url;
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^www\./, "");
+      const muted = shouldStartMuted(platform);
+      if (/youtube(-nocookie)?\.com$/.test(host)) u.searchParams.set("mute", muted ? "1" : "0");
+      else if (host === "tiktok.com" && u.pathname.indexOf("/player/") === 0) u.searchParams.set("muted", muted ? "1" : "0");
+      else if (host === "facebook.com" && u.pathname.indexOf("/plugins/video.php") === 0) u.searchParams.set("mute", muted ? "1" : "0");
+      return u.href;
+    } catch { return url; }
+  }
+  function playerFrame() { return $("#playerStage iframe"); }
+  function ytCommand(func, args) {
+    const f = playerFrame(); if (!f || !f.contentWindow) return;
+    const msg = JSON.stringify({ event: "command", func: func, args: args || [], id: "reelroom", channel: "widget" });
+    for (const origin of ["https://www.youtube-nocookie.com", "https://www.youtube.com"]) {
+      try { f.contentWindow.postMessage(msg, origin); } catch {}
+    }
+  }
+  function tiktokCommand(type, value) {
+    const f = playerFrame(); if (!f || !f.contentWindow) return;
+    try { f.contentWindow.postMessage({ "x-tiktok-player": true, type: type, value: value }, "https://www.tiktok.com"); } catch {}
+  }
+  function sendUnmute(platform) {
+    if (platform === "youtube") { ytCommand("unMute"); ytCommand("playVideo"); }
+    else if (platform === "tiktok") { tiktokCommand("unMute"); }
+  }
+  function setSoundConfirmed(on) {
+    clearTimeout(sound.confirmTimer);
+    sound.fallback = false;
+    sound.status = on ? "on" : "muted";
+    if (on) rememberSound();
+    updateSoundUI();
+  }
+  function initSoundFor(platform) {
+    clearTimeout(sound.confirmTimer);
+    sound.platform = platform || "";
+    sound.fallback = false;
+    if (platform === "instagram") sound.status = "unknown";
+    else sound.status = shouldStartMuted(platform) ? "muted" : "trying";
+    updateSoundUI();
+    if (!shouldStartMuted(platform) && canHostUnmute(platform)) {
+      setTimeout(() => { if (state.activePlatform === platform) sendUnmute(platform); }, 900);
+    }
+  }
+  function requestSound() {
+    const platform = state.activePlatform || sound.platform;
+    if (!platform) return;
+    showFsControls();
+    if (canHostUnmute(platform)) {
+      sound.status = "trying"; sound.fallback = false;
+      sendUnmute(platform);
+      rememberSound();
+      updateSoundUI();
+      clearTimeout(sound.confirmTimer);
+      sound.confirmTimer = setTimeout(() => {
+        if (sound.status === "trying") { sound.status = "fallback"; sound.fallback = true; updateSoundUI(); }
+      }, 1800);
+    } else {
+      sound.status = "fallback"; sound.fallback = true;
+      updateSoundUI();
+      toast(platform === "instagram"
+        ? "Tap the speaker inside the Instagram video. If it is hidden, use Show full post."
+        : "Tap the speaker inside the Facebook video to enable sound.");
+    }
+  }
+  function toggleSoundRemember() {
+    prefs.soundRemember = !soundRememberOn(); savePrefs();
+    if (!prefs.soundRemember) { sound.sessionOn = false; saveSoundSession(false); }
+    updateSoundUI(); syncFsMore();
+    toast(prefs.soundRemember ? "Will remember sound for this session" : "Sound memory off");
+  }
+  function updateSoundUI() {
+    const modal = $("#playerModal");
+    const open = modal && !modal.hidden;
+    const big = open && inFullscreen() && state.playerView === "big";
+    const helper = $("#soundHelperBtn"), helperText = $("#soundHelperText"), helperIcon = $("#soundHelperIcon");
+    const hint = $("#soundHint");
+    const fsBtn = $("#fsSoundBtn"), actionBtn = $("#soundActionBtn");
+    const on = sound.status === "on";
+    const hostable = canHostUnmute(sound.platform);
+    const label = on ? "Sound on"
+      : (sound.fallback ? (hostable ? "Try sound again" : "Tap for sound")
+      : (sound.status === "trying" ? "If silent, tap for sound" : "Tap for sound"));
+    const icon = on ? "🔊" : "🔇";
+    if (helper) {
+      // For Instagram/Facebook the big button cannot unmute, so once we know that,
+      // show the honest hint instead of a button that would only repeat the hint.
+      helper.hidden = !(big && !on && !state.moreOpen && !(sound.fallback && !hostable));
+      if (helperText) helperText.textContent = label;
+      if (helperIcon) helperIcon.textContent = icon;
+      helper.setAttribute("aria-pressed", String(on));
+    }
+    if (hint) {
+      hint.hidden = !(big && sound.fallback && !state.moreOpen);
+      hint.textContent = sound.fallback
+        ? (hostable
+            ? "ReelRoom asked the player to unmute. If it is still silent, tap the speaker inside the video."
+            : (sound.platform === "instagram"
+                ? "Instagram controls its own sound. Tap the speaker inside the video, or use Show full post."
+                : "Facebook controls its own sound. Tap the speaker inside the video."))
+        : "";
+    }
+    if (fsBtn) {
+      fsBtn.textContent = icon + (on ? " Sound on" : " Sound");
+      fsBtn.setAttribute("aria-pressed", String(on));
+      fsBtn.title = on ? "Sound on (S)" : "Enable sound (S)";
+    }
+    if (actionBtn) {
+      actionBtn.textContent = icon + (on ? " Sound on" : " Enable sound");
+      actionBtn.setAttribute("aria-pressed", String(on));
+    }
+    const rem = $("#fsSoundRememberBtn");
+    if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
+  }
+
   function embedWithApi(platform, item, url) {
     if (!url) return url;
     try {
@@ -735,8 +874,8 @@
         const prog = Number(item.progress) || 0;
         if (pos > 5 && prog > 0.02 && prog < 0.92) u.searchParams.set("start", String(Math.floor(pos)));
       }
-      return u.href;
-    } catch { return url; }
+      return applySoundParams(platform, u.href);
+    } catch { return applySoundParams(platform, url); }
   }
 
   async function markOpened(item) {
@@ -821,6 +960,7 @@
     // playback reporting + continue-watching tracking
     resetBridge(active.platform);
     state.activePlatform = active.platform;
+    initSoundFor(active.platform);
     const frame = stage.querySelector("iframe");
     if (frame && active.platform === "youtube") {
       frame.addEventListener("load", () => {
@@ -852,6 +992,7 @@
     if (titleEl) titleEl.title = displayTitle(item);
     updateFsBtn();
     syncFsMore();
+    updateSoundUI();
 
     const note = document.querySelector(".embed-note");
     if (note) {
@@ -886,6 +1027,9 @@
     state.playerIndex = -1;
     state.igActive = false;
     resetBridge("");
+    clearTimeout(sound.confirmTimer);
+    sound.status = "muted"; sound.fallback = false; sound.platform = "";
+    updateSoundUI();
     const back = state.returnFocusId && document.querySelector(`#grid .card[data-id="${state.returnFocusId}"]`);
     if (back) back.focus();
   }
@@ -1085,6 +1229,7 @@
   const PREFS_KEY = "reelroom.prefs.v1";
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
   const prefs = Object.assign({ tvMode: null, theatre: false, autoplay: true, advanceSecs: 0, continueClearedAt: null,
+    soundRemember: true,
     igFullPost: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
   if (!prefs.igAdjust || !prefs.igAdjust.reel) prefs.igAdjust = { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } };
   function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
@@ -1254,6 +1399,8 @@
       const info = data.info || {};
       if (typeof info.currentTime === "number") bridge.currentTime = info.currentTime;
       if (typeof info.duration === "number" && info.duration > 0) bridge.duration = info.duration;
+      if (typeof info.muted === "boolean") setSoundConfirmed(!info.muted);
+      else if (typeof info.volume === "number") setSoundConfirmed(info.volume > 0);
       const st = data.event === "onStateChange" ? data.info : info.playerState;
       if (st === 0) handleEnded();
       return;
@@ -1265,6 +1412,7 @@
         if (typeof d.value.currentTime === "number") bridge.currentTime = d.value.currentTime;
         if (typeof d.value.duration === "number" && d.value.duration > 0) bridge.duration = d.value.duration;
       }
+      if (d.type === "onMute") setSoundConfirmed(d.value === false);
       if (d.type === "onStateChange" && Number(d.value) === 0) handleEnded();
     }
   }
@@ -1668,6 +1816,14 @@
     if (apBtn) apBtn.addEventListener("click", applyAutoplayToggle);
     const fsApBtn = $("#fsAutoplayBtn");
     if (fsApBtn) fsApBtn.addEventListener("click", (e) => { e.stopPropagation(); applyAutoplayToggle(); });
+    const fsSoundBtn = $("#fsSoundBtn");
+    if (fsSoundBtn) fsSoundBtn.addEventListener("click", (e) => { e.stopPropagation(); showFsControls(); requestSound(); });
+    const soundHelperBtn = $("#soundHelperBtn");
+    if (soundHelperBtn) soundHelperBtn.addEventListener("click", (e) => { e.stopPropagation(); requestSound(); });
+    const soundActionBtn = $("#soundActionBtn");
+    if (soundActionBtn) soundActionBtn.addEventListener("click", (e) => { e.stopPropagation(); requestSound(); });
+    const fsSoundRememberBtn = $("#fsSoundRememberBtn");
+    if (fsSoundRememberBtn) fsSoundRememberBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSoundRemember(); });
     const advSel = $("#advanceSelect");
     if (advSel) advSel.addEventListener("change", (e) => applyAdvanceSecs(e.target.value));
     const fsAdvSel = $("#fsAdvanceSelect");
@@ -1797,6 +1953,7 @@
         }
         if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); }
         if (e.key === "t" || e.key === "T") { e.preventDefault(); toggleDetailsView(); }
+        if (e.key === "s" || e.key === "S") { e.preventDefault(); requestSound(); }
         if ((e.key === "m" || e.key === "M") && state.playerView === "big") { e.preventDefault(); toggleFsMore(); }
         if (e.key === "Backspace") { e.preventDefault(); closePlayer(); }
         return;

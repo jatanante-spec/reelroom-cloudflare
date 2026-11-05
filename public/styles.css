@@ -739,3 +739,47 @@ body.tv-mode .player-shell.pseudo-fs .fs-more-grid { grid-template-columns: 1fr;
     outline: 3px solid #4b8dff; outline-offset: 1px;
   }
 }
+
+/* ==========================================================================
+   v15 — sound helper: obvious muted state, one-tap unmute, session memory
+   ========================================================================== */
+
+.sound-helper { display: none; }
+.player-shell:fullscreen .sound-helper:not([hidden]),
+.player-shell.pseudo-fs .sound-helper:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 10px;
+  position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%);
+  z-index: 7; border: 0; border-radius: 999px; padding: 13px 20px;
+  background: linear-gradient(135deg, #ff4d4d, #ff7a59); color: #fff;
+  font-size: 15px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 12px 30px rgba(255, 77, 77, .35);
+  max-width: calc(100% - 32px);
+}
+.sound-helper:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+.sound-hint {
+  position: absolute; left: 16px; right: 16px; bottom: 148px; z-index: 7;
+  background: rgba(10, 12, 18, .92); border: 1px solid rgba(255, 176, 32, .55);
+  color: #ffe6b8; border-radius: 12px; padding: 10px 12px;
+  font-size: 12.5px; line-height: 1.45; text-align: center;
+}
+.player-shell.fs-idle:not(.counting) .sound-helper,
+.player-shell.fs-idle:not(.counting) .sound-hint { opacity: 0; pointer-events: none; }
+.player-shell.more-open .sound-helper,
+.player-shell.more-open .sound-hint,
+.player-shell.counting .sound-helper { display: none !important; }
+#fsSoundBtn[aria-pressed="true"] { background: #2dd4a7; border-color: #2dd4a7; color: #041210; }
+#soundActionBtn[aria-pressed="true"] { border-color: #2dd4a7; color: #2dd4a7; }
+
+/* TV / remote: keep the sound button in the side space, above More. */
+body.tv-mode .player-shell:fullscreen #fsSoundBtn,
+body.tv-mode .player-shell.pseudo-fs #fsSoundBtn {
+  left: 14px; bottom: 64px;
+}
+body.tv-mode .player-shell:fullscreen .sound-helper,
+body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
+
+@media (max-width: 900px) {
+  .player-shell:fullscreen .sound-helper:not([hidden]),
+  .player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: 96px; }
+  .sound-hint { bottom: 158px; }
+}
