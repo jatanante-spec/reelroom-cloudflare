@@ -122,7 +122,7 @@
         <div class="player-sub" id="playerSub"></div>
       </div>
       <div class="player-nav">
-        <button class="icon-btn" id="theatreBtn" title="Theatre mode (T)" aria-label="Theatre mode" aria-pressed="false">
+        <button class="icon-btn" id="theatreBtn" title="Details view (T)" aria-label="Details view" aria-pressed="false">
           <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
             <rect x="2.2" y="4.6" width="15.6" height="10.8" rx="1.6"></rect>
             <rect x="5.2" y="7.6" width="9.6" height="4.8" rx="0.8" fill="currentColor" stroke="none"></rect>
@@ -154,10 +154,12 @@
     </div>
     <!-- v10: our own fullscreen chrome. Exit is always visible and sits top-LEFT,
          away from Instagram's top-right "View profile" button. -->
-    <button class="fs-exit" id="fsExitBtn" title="Exit fullscreen" aria-label="Exit fullscreen">✕</button>
+    <button class="fs-exit" id="fsExitBtn" title="Close player (Esc)" aria-label="Close player">✕</button>
     <div class="fs-bar" id="fsBar">
-      <button class="fs-btn" id="fsPrevBtn" title="Previous">‹</button>
-      <button class="fs-btn" id="fsNextBtn" title="Next">›</button>
+      <button class="fs-btn" id="fsPrevBtn" title="Previous (←)">‹</button>
+      <button class="fs-btn" id="fsNextBtn" title="Next (→)">›</button>
+      <button class="fs-btn" id="fsFavBtn" title="Favorite">☆</button>
+      <button class="fs-btn fs-btn-primary" id="fsMoreBtn" title="More actions (M)" aria-pressed="false">More ⋯</button>
       <button class="fs-btn" id="fsFullPostBtn" aria-pressed="false">Show full post</button>
       <button class="fs-btn" id="fsAdjustBtn" aria-pressed="false">Adjust picture</button>
       <span class="fs-count" id="fsCountdown" hidden>Next in <b id="fsCountNum">5</b>s
@@ -175,6 +177,43 @@
       </div>
       <button class="fs-btn" id="caReset">Reset</button>
       <span class="ca-hint">Only affects Instagram in fullscreen. Saved on this device.</span>
+    </div>
+    <!-- v13: occasional actions live here so the big view stays uncluttered.
+         Reuses the crop-adjust panel pattern: focusable, remote-friendly. -->
+    <div class="fs-more" id="fsMorePanel" hidden role="dialog" aria-label="Video actions">
+      <div class="fs-more-head">
+        <strong>Video actions</strong>
+        <button class="fs-btn" id="fsMoreCloseBtn" title="Close (Back)" aria-label="Close actions">✕</button>
+      </div>
+      <div class="fs-more-grid">
+        <button class="fs-btn" id="fsMoreFavBtn">☆ Favorite</button>
+        <button class="fs-btn" id="fsMoreWatchedBtn">Mark watched</button>
+        <a class="fs-btn" id="fsMoreOriginalBtn" target="_blank" rel="noopener noreferrer">Open original ↗</a>
+        <button class="fs-btn" id="fsMoreCopyBtn">Copy link</button>
+        <button class="fs-btn" id="fsMoreBackupBtn">Add backup link</button>
+        <button class="fs-btn" id="fsMoreEditBtn">Edit details</button>
+        <button class="fs-btn" id="fsMoreDetailsBtn">Details view</button>
+        <button class="fs-btn fs-btn-danger" id="fsMoreDeleteBtn">Delete</button>
+      </div>
+      <div class="fs-more-row">
+        <span>Autoplay</span>
+        <button class="fs-btn" id="fsAutoplayBtn" aria-pressed="true">On</button>
+      </div>
+      <div class="fs-more-row">
+        <label for="fsAdvanceSelect">Advance after</label>
+        <select id="fsAdvanceSelect" aria-label="Auto-advance delay for Facebook and Instagram">
+          <option value="0">off</option>
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+          <option value="90">90s</option>
+          <option value="120">2 min</option>
+        </select>
+      </div>
+      <div class="fs-more-row" id="fsMoreIgRow" hidden>
+        <button class="fs-btn" id="fsMoreFullPostBtn" aria-pressed="false">Show full post</button>
+        <button class="fs-btn" id="fsMoreAdjustBtn" aria-pressed="false">Adjust picture</button>
+      </div>
+      <p class="fs-more-note" id="fsMoreNote">Playback blocked? Use “Open original”, or add a backup link to the same clip on another site.</p>
     </div>
     <div class="upnext" id="upnextBar">
       <div class="upnext-head">

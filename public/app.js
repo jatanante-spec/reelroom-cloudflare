@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v12";
+  const REELROOM_VERSION = "v13";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -19,6 +19,8 @@
     pollTimer: null,
     fbUseAlt: false,
     useBackup: null,
+    playerView: "big",   // big | details — v13 opens big by default
+    moreOpen: false,
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -319,7 +321,24 @@
     state.useBackup = null;
     $("#playerModal").hidden = false;
     document.body.style.overflow = "hidden";
+    // v13: open the big view immediately. This is the CSS-based big layout
+    // (pseudo-fs), not the browser Fullscreen API, so it behaves the same on
+    // phones, Silk and desktop. F can still request true fullscreen on top.
+    state.playerView = "big";
+    state.moreOpen = false;
+    const shell = $("#playerShell");
+    if (shell) {
+      shell.classList.add("pseudo-fs");
+      shell.classList.remove("details-view", "more-open");
+    }
+    $("#playerModal").classList.remove("theatre");
     renderPlayer(list[idx]);
+    setTimeout(refitStage, 60);
+    focusBigDefault();
+    if (prefs.fsHintVersion !== 13) {
+      prefs.fsHintVersion = 13; savePrefs();
+      toast(tvEnabled() ? "Big view: ← → change video · More ⋯ for actions" : "Big view: tap for controls · More ⋯ for actions");
+    }
   }
 
   function facebookEmbeds(item) {
@@ -519,6 +538,9 @@
     }
     const fp = $("#fsFullPostBtn");
     if (fp) { fp.textContent = prefs.igFullPost ? "Crop to video" : "Show full post"; fp.setAttribute("aria-pressed", String(!!prefs.igFullPost)); }
+    const row = $("#fsMoreIgRow"); if (row) row.hidden = !on;
+    const mfp = $("#fsMoreFullPostBtn");
+    if (mfp) { mfp.textContent = prefs.igFullPost ? "Crop to video" : "Show full post"; mfp.setAttribute("aria-pressed", String(!!prefs.igFullPost)); }
     if (!on) { const p = $("#cropAdjust"); if (p) { p.hidden = true; p.classList.remove("open"); } }
   }
 
@@ -600,23 +622,83 @@
     if (!shell) return;
     shell.classList.remove("fs-idle");
     clearTimeout(fsIdleTimer);
-    if (inFullscreen()) fsIdleTimer = setTimeout(hideFsControls, 3500);
+    // v13: on TV the controls stay visible — the remote is the primary input.
+    if (inFullscreen() && !tvEnabled() && !state.moreOpen) fsIdleTimer = setTimeout(hideFsControls, 3500);
   }
   function hideFsControls() {
     clearTimeout(fsIdleTimer); fsIdleTimer = null;
     const shell = $("#playerShell");
-    if (shell && inFullscreen()) shell.classList.add("fs-idle");
+    if (shell && inFullscreen() && !tvEnabled() && !state.moreOpen) shell.classList.add("fs-idle");
   }
   function syncFsChrome() {
     const shell = $("#playerShell");
     if (!shell) return;
-    if (inFullscreen()) { ensureFsChrome(); showFsControls(); }
+    if (inFullscreen() && state.playerView === "big") { ensureFsChrome(); showFsControls(); syncFsMore(); }
     else {
       clearTimeout(fsIdleTimer); fsIdleTimer = null;
-      shell.classList.remove("fs-idle", "counting");
+      shell.classList.remove("fs-idle", "counting", "more-open");
+      closeFsMore();
       const p = $("#cropAdjust"); if (p) { p.hidden = true; p.classList.remove("open"); }
       const ab = $("#fsAdjustBtn"); if (ab) ab.setAttribute("aria-pressed", "false");
     }
+  }
+
+  // ---- v13 More panel: occasional actions without cluttering the big view ----
+  function openFsMore() {
+    if (!inFullscreen() || state.playerView !== "big") return;
+    const p = $("#fsMorePanel"); if (!p) return;
+    state.moreOpen = true;
+    p.hidden = false; p.classList.add("open");
+    const shell = $("#playerShell"); if (shell) shell.classList.add("more-open");
+    const b = $("#fsMoreBtn"); if (b) b.setAttribute("aria-pressed", "true");
+    clearTimeout(fsIdleTimer);
+    syncFsMore();
+    const first = $("#fsMoreFavBtn"); if (first) first.focus();
+  }
+  function closeFsMore() {
+    state.moreOpen = false;
+    const p = $("#fsMorePanel"); if (p) { p.hidden = true; p.classList.remove("open"); }
+    const shell = $("#playerShell"); if (shell) shell.classList.remove("more-open");
+    const b = $("#fsMoreBtn"); if (b) b.setAttribute("aria-pressed", "false");
+  }
+  function toggleFsMore() { if (state.moreOpen) closeFsMore(); else openFsMore(); }
+  function syncFsMore() {
+    const item = currentList()[state.playerIndex];
+    if (!item) return;
+    const sources = activeSources(item);
+    const hasBackup = sources.length > 1;
+    const useBackup = hasBackup && state.useBackup !== false;
+    const active = useBackup ? sources[1] : sources[0];
+    const fav = $("#fsFavBtn"); if (fav) { fav.textContent = item.favorite ? "★" : "☆"; fav.title = item.favorite ? "Favorited" : "Favorite"; }
+    const mf = $("#fsMoreFavBtn"); if (mf) mf.textContent = item.favorite ? "★ Favorited" : "☆ Favorite";
+    const mw = $("#fsMoreWatchedBtn"); if (mw) mw.textContent = item.watched ? "✓ Watched" : "Mark watched";
+    const mo = $("#fsMoreOriginalBtn"); if (mo) mo.href = active.url || safeUrl(item.canonical_url || item.url);
+    const mb = $("#fsMoreBackupBtn"); if (mb) mb.textContent = hasBackup ? "Change backup link" : "Add backup link";
+    const ap = $("#fsAutoplayBtn"); if (ap) { ap.textContent = prefs.autoplay ? "On" : "Off"; ap.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
+    const adv = $("#fsAdvanceSelect"); if (adv) adv.value = String(prefs.advanceSecs);
+    const igRow = $("#fsMoreIgRow"); if (igRow) igRow.hidden = !state.igActive;
+    const fp = $("#fsMoreFullPostBtn"); if (fp) { fp.textContent = prefs.igFullPost ? "Crop to video" : "Show full post"; fp.setAttribute("aria-pressed", String(!!prefs.igFullPost)); }
+    const adj = $("#fsMoreAdjustBtn"); if (adj) { const open = !$("#cropAdjust").hidden; adj.setAttribute("aria-pressed", String(open)); }
+    const note = $("#fsMoreNote"); const mainNote = document.querySelector(".embed-note");
+    if (note && mainNote) note.textContent = mainNote.textContent;
+  }
+  function fsFocusables() {
+    if (state.moreOpen) {
+      const p = $("#fsMorePanel");
+      return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
+    }
+    if (state.playerView === "big" && inFullscreen()) {
+      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
+        .map((s) => $(s)).filter(isVisible);
+    }
+    return [];
+  }
+  function moveFsFocus(dir) {
+    const list = fsFocusables();
+    if (!list.length) return;
+    let i = list.indexOf(document.activeElement);
+    i = (i + dir + list.length) % list.length;
+    list[i].focus();
   }
 
   function stageClass(src, embed) {
@@ -763,10 +845,11 @@
         }
       }, 12000);
     }
-    $("#playerModal").classList.toggle("theatre", !!prefs.theatre);
+    $("#playerModal").classList.toggle("theatre", state.playerView === "details" && !!prefs.theatre);
     const titleEl = $("#playerTitle");
     if (titleEl) titleEl.title = displayTitle(item);
     updateFsBtn();
+    syncFsMore();
 
     const note = document.querySelector(".embed-note");
     if (note) {
@@ -790,7 +873,11 @@
     stopTracking();
     clearTimeout(state.reportWatchdog);
     if (item) saveProgress(item, true).then(() => renderContinue());
+    closeFsMore();
     if (inFullscreen()) exitFullscreen();
+    const shell = $("#playerShell");
+    if (shell) shell.classList.remove("pseudo-fs", "details-view", "more-open", "fs-idle");
+    state.playerView = "big";
     $("#playerModal").hidden = true;
     $("#playerStage").innerHTML = "";
     document.body.style.overflow = "";
@@ -1008,6 +1095,11 @@
     document.body.classList.toggle("tv-mode", tvEnabled());
     const b = $("#tvModeBtn");
     if (b) { b.setAttribute("aria-pressed", String(tvEnabled())); b.title = tvEnabled() ? "TV mode is on" : "TV / remote mode"; }
+    if (!$("#playerModal").hidden) {
+      syncFsChrome();
+      setTimeout(refitStage, 60);
+      if (state.playerView === "big") focusBigDefault();
+    }
   }
   function toggleTvMode() {
     prefs.tvMode = !tvEnabled(); savePrefs(); applyTvMode(); render();
@@ -1017,37 +1109,86 @@
 
   // ---- fullscreen / theatre ----
   function pseudoFs() { const s = $("#playerShell"); return !!s && s.classList.contains("pseudo-fs"); }
-  function inFullscreen() { return !!document.fullscreenElement || pseudoFs(); }
+  function trueFullscreen() { return !!document.fullscreenElement; }
+  function inFullscreen() { return trueFullscreen() || pseudoFs(); }
+  function isVisible(el) {
+    return !!el && !el.hidden && el.style.display !== "none" &&
+      (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length > 0));
+  }
+  function focusBigDefault() {
+    if ($("#playerModal").hidden || state.playerView !== "big") return;
+    const target = $("#fsNextBtn") || $("#fsMoreBtn");
+    if (isVisible(target)) target.focus();
+  }
   function updateFsBtn() {
     const b = $("#fullscreenBtn");
     if (b) {
-      const on = inFullscreen();
-      b.title = on ? "Exit fullscreen (F / Esc)" : "Fullscreen (F)";
-      b.setAttribute("aria-label", on ? "Exit fullscreen" : "Fullscreen");
+      const on = trueFullscreen();
+      b.title = on ? "Exit true fullscreen (F)" : "Fullscreen (F)";
+      b.setAttribute("aria-label", on ? "Exit true fullscreen" : "Fullscreen");
       b.setAttribute("aria-pressed", String(on));
     }
     const t = $("#theatreBtn");
-    if (t) t.setAttribute("aria-pressed", String(prefs.theatre));
+    if (t) {
+      const details = state.playerView === "details";
+      t.setAttribute("aria-pressed", String(details));
+      t.title = details ? "Big view (T)" : "Details view (T)";
+    }
   }
   function refitStage() {
     const it = currentList()[state.playerIndex];
     if (it && state.fbAutoFit) { lastFitKey = ""; fitFacebook(it); }
     if (state.igActive) { layoutInstagram(); syncIgButtons(); }
   }
+  // v13: big view is the default. Details is the old popup, kept on T.
+  function enterBigView() {
+    const shell = $("#playerShell"); if (!shell) return;
+    state.playerView = "big";
+    closeFsMore();
+    shell.classList.add("pseudo-fs");
+    shell.classList.remove("details-view");
+    $("#playerModal").classList.remove("theatre");
+    updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
+    focusBigDefault();
+  }
+  function enterDetailsView() {
+    const shell = $("#playerShell"); if (!shell) return;
+    state.playerView = "details";
+    closeFsMore();
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    shell.classList.remove("pseudo-fs", "more-open", "fs-idle");
+    shell.classList.add("details-view");
+    $("#playerModal").classList.toggle("theatre", !!prefs.theatre);
+    updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
+    const c = $("#closePlayerBtn"); if (c) c.focus();
+  }
+  function toggleDetailsView() {
+    if (state.playerView === "details") enterBigView(); else enterDetailsView();
+  }
   async function toggleFullscreen() {
     const shell = $("#playerShell");
     if (!shell) return;
-    if (inFullscreen()) return exitFullscreen();
+    if (state.playerView === "details") enterBigView();
+    if (trueFullscreen()) {
+      // Leave true browser fullscreen but stay in the big default view.
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      shell.classList.add("pseudo-fs");
+      state.playerView = "big";
+      updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
+      return;
+    }
     try {
       if (!shell.requestFullscreen) throw new Error("unsupported");
       await shell.requestFullscreen();
     } catch {
       shell.classList.add("pseudo-fs");
     }
+    state.playerView = "big";
+    shell.classList.add("pseudo-fs");
     updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
-    if (prefs.fsHintVersion !== 10) {
-      prefs.fsHintVersion = 10; prefs.fsHintShown = true; savePrefs();
-      toast("Tap the video for controls · ✕ top-left to exit");
+    if (prefs.fsHintVersion !== 13) {
+      prefs.fsHintVersion = 13; prefs.fsHintShown = true; savePrefs();
+      toast("Tap the video for controls · ✕ top-left to close");
     }
   }
   function exitFullscreen() {
@@ -1055,12 +1196,6 @@
     if (shell) shell.classList.remove("pseudo-fs");
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
     updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
-  }
-  function toggleTheatre() {
-    prefs.theatre = !prefs.theatre; savePrefs();
-    $("#playerModal").classList.toggle("theatre", prefs.theatre);
-    updateFsBtn(); setTimeout(refitStage, 60);
-    toast(prefs.theatre ? "Theatre mode on" : "Theatre mode off");
   }
 
   // ---- remote / keyboard grid navigation ----
@@ -1216,6 +1351,9 @@
     const ab = $("#autoplayBtn");
     if (ab) { ab.textContent = "Autoplay: " + (prefs.autoplay ? "on" : "off"); ab.setAttribute("aria-pressed", String(prefs.autoplay)); ab.classList.toggle("btn-primary", prefs.autoplay); }
     const sel = $("#advanceSelect"); if (sel) sel.value = String(prefs.advanceSecs);
+    const fab = $("#fsAutoplayBtn");
+    if (fab) { fab.textContent = prefs.autoplay ? "On" : "Off"; fab.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
+    const fsel = $("#fsAdvanceSelect"); if (fsel) fsel.value = String(prefs.advanceSecs);
 
     if (!prefs.autoplay) setUpnextStatus("Autoplay is off — press › for the next one.");
     else if (reportsProgress(item.platform)) setUpnextStatus("Advances when the video actually ends.");
@@ -1349,6 +1487,26 @@
     try { window.history.replaceState({}, "", window.location.pathname); } catch {}
   }
 
+  function applyAutoplayToggle() {
+    prefs.autoplay = !prefs.autoplay; savePrefs();
+    if (!prefs.autoplay) cancelCountdown();
+    const it = currentList()[state.playerIndex];
+    if (it) renderUpNext({ ...it, platform: state.activePlatform || it.platform });
+    syncFsMore();
+  }
+  function applyAdvanceSecs(value) {
+    prefs.advanceSecs = Number(value) || 0; savePrefs();
+    cancelCountdown();
+    const it = currentList()[state.playerIndex];
+    if (it) {
+      const plat = state.activePlatform || it.platform;
+      renderUpNext({ ...it, platform: plat });
+      cancelCountdown();
+      if (prefs.autoplay && prefs.advanceSecs > 0 && !reportsProgress(plat)) startCountdown(prefs.advanceSecs);
+    }
+    syncFsMore();
+  }
+
   function bind() {
     $("#addBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
     $("#emptyAddBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
@@ -1436,26 +1594,15 @@
     const fsBtn = $("#fullscreenBtn");
     if (fsBtn) fsBtn.addEventListener("click", toggleFullscreen);
     const thBtn = $("#theatreBtn");
-    if (thBtn) thBtn.addEventListener("click", toggleTheatre);
+    if (thBtn) thBtn.addEventListener("click", toggleDetailsView);
     const apBtn = $("#autoplayBtn");
-    if (apBtn) apBtn.addEventListener("click", () => {
-      prefs.autoplay = !prefs.autoplay; savePrefs();
-      if (!prefs.autoplay) cancelCountdown();
-      const it = currentList()[state.playerIndex];
-      if (it) renderUpNext({ ...it, platform: state.activePlatform || it.platform });
-    });
+    if (apBtn) apBtn.addEventListener("click", applyAutoplayToggle);
+    const fsApBtn = $("#fsAutoplayBtn");
+    if (fsApBtn) fsApBtn.addEventListener("click", (e) => { e.stopPropagation(); applyAutoplayToggle(); });
     const advSel = $("#advanceSelect");
-    if (advSel) advSel.addEventListener("change", (e) => {
-      prefs.advanceSecs = Number(e.target.value) || 0; savePrefs();
-      cancelCountdown();
-      const it = currentList()[state.playerIndex];
-      if (it) {
-        const plat = state.activePlatform || it.platform;
-        renderUpNext({ ...it, platform: plat });
-        cancelCountdown();
-        if (prefs.autoplay && prefs.advanceSecs > 0 && !reportsProgress(plat)) startCountdown(prefs.advanceSecs);
-      }
-    });
+    if (advSel) advSel.addEventListener("change", (e) => applyAdvanceSecs(e.target.value));
+    const fsAdvSel = $("#fsAdvanceSelect");
+    if (fsAdvSel) fsAdvSel.addEventListener("change", (e) => { e.stopPropagation(); applyAdvanceSecs(e.target.value); });
     const cancelAp = $("#cancelAutoplayBtn");
     if (cancelAp) cancelAp.addEventListener("click", () => { cancelCountdown(); setUpnextStatus("Auto-advance cancelled."); });
     const clearCont = $("#clearContinueBtn");
@@ -1466,13 +1613,13 @@
 
     // ---- v10 fullscreen bar + Instagram crop controls ----
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", (e) => { e.stopPropagation(); showFsControls(); fn(); }); };
-    on("#fsExitBtn", exitFullscreen);
+    on("#fsExitBtn", closePlayer);
     on("#fsPrevBtn", () => stepPlayer(-1));
     on("#fsNextBtn", () => stepPlayer(1));
     on("#fsCancelBtn", () => { cancelCountdown(); setUpnextStatus("Auto-advance cancelled."); });
     on("#fsFullPostBtn", () => {
       prefs.igFullPost = !prefs.igFullPost; savePrefs();
-      layoutInstagram(); syncIgButtons();
+      layoutInstagram(); syncIgButtons(); syncFsMore();
       toast(prefs.igFullPost ? "Showing the full Instagram post" : "Cropped to the video");
     });
     on("#fsAdjustBtn", () => {
@@ -1481,7 +1628,38 @@
       p.hidden = !open; p.classList.toggle("open", open);
       b.setAttribute("aria-pressed", String(open));
       if (open) { clearTimeout(fsIdleTimer); }
+      syncFsMore();
     });
+
+    // ---- v13 More panel ----
+    on("#fsMoreBtn", toggleFsMore);
+    on("#fsFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
+    on("#fsMoreCloseBtn", closeFsMore);
+    on("#fsMoreFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
+    on("#fsMoreWatchedBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleWatched(it); });
+    on("#fsMoreCopyBtn", copyCurrentLink);
+    on("#fsMoreBackupBtn", () => {
+      const it = currentList()[state.playerIndex];
+      if (it) { closeFsMore(); openEdit(it); const f = $("#editBackupUrl"); if (f) f.focus(); }
+    });
+    on("#fsMoreEditBtn", () => { const it = currentList()[state.playerIndex]; if (it) { closeFsMore(); openEdit(it); } });
+    on("#fsMoreDetailsBtn", () => { closeFsMore(); enterDetailsView(); });
+    on("#fsMoreDeleteBtn", () => { const it = currentList()[state.playerIndex]; if (it) { closeFsMore(); deleteItem(it); } });
+    on("#fsMoreFullPostBtn", () => {
+      prefs.igFullPost = !prefs.igFullPost; savePrefs();
+      layoutInstagram(); syncIgButtons(); syncFsMore();
+      toast(prefs.igFullPost ? "Showing the full Instagram post" : "Cropped to the video");
+    });
+    on("#fsMoreAdjustBtn", () => {
+      closeFsMore();
+      const p = $("#cropAdjust"), b = $("#fsAdjustBtn");
+      const open = p.hidden;
+      p.hidden = !open; p.classList.toggle("open", open);
+      if (b) b.setAttribute("aria-pressed", String(open));
+      if (open) { clearTimeout(fsIdleTimer); const z = $("#caZoomIn"); if (z) z.focus(); }
+    });
+    const fsOrig = $("#fsMoreOriginalBtn");
+    if (fsOrig) fsOrig.addEventListener("click", () => closeFsMore());
     on("#caZoomIn", () => nudgeInstagram("zoom", 1));
     on("#caZoomOut", () => nudgeInstagram("zoom", -1));
     on("#caUp", () => nudgeInstagram("dy", -1));
@@ -1520,7 +1698,7 @@
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       if (e.key === "Escape") {
-        if (inFullscreen()) { exitFullscreen(); return; }
+        if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;
         else if (!$("#addModal").hidden) $("#addModal").hidden = true;
@@ -1532,10 +1710,21 @@
       if (inFullscreen()) showFsControls();
       if (e.key === "/") { e.preventDefault(); $("#searchInput").focus(); return; }
       if (!$("#playerModal").hidden) {
+        if (state.moreOpen) {
+          if (e.key === "ArrowUp") { e.preventDefault(); moveFsFocus(-1); }
+          if (e.key === "ArrowDown") { e.preventDefault(); moveFsFocus(1); }
+          if (e.key === "Backspace") { e.preventDefault(); closeFsMore(); }
+          if (e.key === "m" || e.key === "M") { e.preventDefault(); closeFsMore(); }
+          return;
+        }
         if (e.key === "ArrowLeft") { e.preventDefault(); stepPlayer(-1); }
         if (e.key === "ArrowRight") { e.preventDefault(); stepPlayer(1); }
+        if (state.playerView === "big" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+          e.preventDefault(); moveFsFocus(e.key === "ArrowDown" ? 1 : -1);
+        }
         if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); }
-        if (e.key === "t" || e.key === "T") { e.preventDefault(); toggleTheatre(); }
+        if (e.key === "t" || e.key === "T") { e.preventDefault(); toggleDetailsView(); }
+        if ((e.key === "m" || e.key === "M") && state.playerView === "big") { e.preventDefault(); toggleFsMore(); }
         if (e.key === "Backspace") { e.preventDefault(); closePlayer(); }
         return;
       }

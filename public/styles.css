@@ -622,3 +622,85 @@ body.standalone .toast {
   top: calc(10px + env(safe-area-inset-top, 0px));
   left: calc(10px + env(safe-area-inset-left, 0px));
 }
+
+/* ==========================================================================
+   v13 — big-by-default player, More panel, TV side controls
+   ========================================================================== */
+
+/* The big view is the existing pseudo-fullscreen layout. Opening a card now
+   adds .pseudo-fs immediately, so the video owns the screen without needing
+   the browser Fullscreen API. True fullscreen (F) still works on top. */
+.player-shell.pseudo-fs .fs-btn-primary { background: #ff4d4d; border-color: #ff4d4d; }
+.fs-btn-danger { color: #ff9a9a; border-color: rgba(255,90,95,.45); }
+
+/* More panel — same family as .crop-adjust, but a proper action sheet. */
+.fs-more { display: none; }
+.fs-more.open {
+  display: flex; flex-direction: column; gap: 10px;
+  position: absolute; left: 12px; right: 12px; bottom: 74px; z-index: 9;
+  max-height: min(70%, 520px); overflow: auto;
+  background: rgba(12,12,14,.97); border: 1px solid #3a3a42; border-radius: 12px; padding: 12px;
+}
+.fs-more-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #fff; }
+.fs-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fs-more-grid .fs-btn { justify-content: flex-start; text-align: left; text-decoration: none; }
+.fs-more-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #ddd; font-size: 13px; }
+.fs-more-row select {
+  background: #1c1c25; color: #fff; border: 1px solid #3a3a42; border-radius: 8px; padding: 6px 8px;
+}
+.fs-more-note { margin: 0; color: #9a9aa6; font-size: 12px; line-height: 1.45; }
+.fs-more .fs-btn:focus-visible, .fs-more select:focus-visible {
+  outline: 3px solid #4b8dff; outline-offset: 1px;
+}
+
+/* When the More panel is open, keep the right-hand TV controls out of the way. */
+.player-shell.more-open #fsNextBtn,
+.player-shell.more-open #fsFavBtn { opacity: 0; pointer-events: none; }
+
+/* Idle controls must not remain clickable while invisible. */
+.player-shell.fs-idle:not(.counting) .fs-bar .fs-btn,
+.player-shell.fs-idle:not(.counting) .fs-exit { pointer-events: none; }
+
+/* --- TV / remote: put the controls in the black side space --- */
+body.tv-mode .player-shell:fullscreen .fs-bar,
+body.tv-mode .player-shell.pseudo-fs .fs-bar {
+  display: block; background: none; padding: 0; inset: 0; pointer-events: none;
+}
+body.tv-mode .player-shell:fullscreen .fs-bar > *,
+body.tv-mode .player-shell.pseudo-fs .fs-bar > * { pointer-events: auto; position: absolute; }
+body.tv-mode .player-shell:fullscreen #fsPrevBtn,
+body.tv-mode .player-shell.pseudo-fs #fsPrevBtn {
+  left: 14px; top: 50%; transform: translateY(-50%);
+  width: 54px; height: 54px; border-radius: 50%; font-size: 26px;
+}
+body.tv-mode .player-shell:fullscreen #fsNextBtn,
+body.tv-mode .player-shell.pseudo-fs #fsNextBtn {
+  right: 14px; top: 50%; transform: translateY(-50%);
+  width: 54px; height: 54px; border-radius: 50%; font-size: 26px;
+}
+body.tv-mode .player-shell:fullscreen #fsMoreBtn,
+body.tv-mode .player-shell.pseudo-fs #fsMoreBtn { left: 14px; bottom: 14px; }
+body.tv-mode .player-shell:fullscreen #fsFavBtn,
+body.tv-mode .player-shell.pseudo-fs #fsFavBtn { right: 14px; bottom: 14px; }
+body.tv-mode .player-shell:fullscreen #fsCountdown,
+body.tv-mode .player-shell.pseudo-fs #fsCountdown {
+  top: 14px; left: 50%; transform: translateX(-50%); bottom: auto;
+}
+/* Instagram-specific buttons move into the More panel on TV so the side
+   margins stay clean. syncIgButtons() still controls their inline display. */
+body.tv-mode .player-shell:fullscreen #fsFullPostBtn,
+body.tv-mode .player-shell.pseudo-fs #fsFullPostBtn,
+body.tv-mode .player-shell:fullscreen #fsAdjustBtn,
+body.tv-mode .player-shell.pseudo-fs #fsAdjustBtn { display: none !important; }
+
+body.tv-mode .player-shell:fullscreen .fs-more.open,
+body.tv-mode .player-shell.pseudo-fs .fs-more.open {
+  left: auto; top: 12px; bottom: 12px; right: 12px;
+  width: clamp(220px, 24%, 320px); max-height: none;
+}
+body.tv-mode .player-shell:fullscreen .fs-more-grid,
+body.tv-mode .player-shell.pseudo-fs .fs-more-grid { grid-template-columns: 1fr; }
+
+/* Details view is the old detailed popup. It is just the normal shell with
+   .pseudo-fs removed; this marker keeps the intent clear for future edits. */
+.player-shell.details-view { /* no extra layout needed */ }
