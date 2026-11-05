@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v15";
+  const REELROOM_VERSION = "v16";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -21,6 +21,10 @@
     useBackup: null,
     playerView: "big",   // big | details — v13 opens big by default
     moreOpen: false,
+    backGuardOpen: false,
+    lastBackPress: 0,
+    playerHistoryActive: false,
+    pendingTikTokSeek: 0,
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -323,6 +327,7 @@
     state.useBackup = null;
     $("#playerModal").hidden = false;
     document.body.style.overflow = "hidden";
+    if (!state.playerHistoryActive) armPlayerHistory();
     // v13: open the big view immediately. This is the CSS-based big layout
     // (pseudo-fs), not the browser Fullscreen API, so it behaves the same on
     // phones, Silk and desktop. F can still request true fullscreen on top.
@@ -679,6 +684,8 @@
     const mb = $("#fsMoreBackupBtn"); if (mb) mb.textContent = hasBackup ? "Change backup link" : "Add backup link";
     const ap = $("#fsAutoplayBtn"); if (ap) { ap.textContent = prefs.autoplay ? "On" : "Off"; ap.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
     const rem = $("#fsSoundRememberBtn"); if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
+    const ar = $("#fsAutoResumeBtn"); if (ar) { ar.textContent = prefs.autoResume ? "On" : "Off"; ar.setAttribute("aria-pressed", String(!!prefs.autoResume)); }
+    const bg = $("#fsBackGuardSelect"); if (bg) bg.value = prefs.backGuard || "ask";
     updateSoundUI();
     const adv = $("#fsAdvanceSelect"); if (adv) adv.value = String(prefs.advanceSecs);
     const igRow = $("#fsMoreIgRow"); if (igRow) igRow.hidden = !state.igActive;
@@ -688,6 +695,9 @@
     if (note && mainNote) note.textContent = mainNote.textContent;
   }
   function fsFocusables() {
+    if (state.backGuardOpen) {
+      return ["#backGuardContinueBtn", "#backGuardExitBtn"].map((s) => $(s)).filter(isVisible);
+    }
     if (state.moreOpen) {
       const p = $("#fsMorePanel");
       return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
@@ -863,6 +873,78 @@
     if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
   }
 
+  // ================= v16: reliable resume + phone-back guard =================
+  function fmtClock(s) {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return h > 0 ? h + ":" + String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0")
+      : m + ":" + String(sec).padStart(2, "0");
+  }
+  function resumePosition(item, platform) {
+    if (!prefs.autoResume || !item || item.watched) return 0;
+    if (platform !== "youtube" && platform !== "tiktok") return 0;
+    const pos = Number(item.watch_seconds) || 0;
+    const prog = Number(item.progress) || 0;
+    if (pos <= 5 || prog >= 0.92) return 0;
+    return Math.floor(pos);
+  }
+  function armPlayerHistory() {
+    try {
+      history.pushState({ reelroom: "player-guard" }, "", location.href);
+      state.playerHistoryActive = true;
+    } catch {}
+  }
+  function showBackGuard() {
+    state.backGuardOpen = true;
+    const shell = $("#playerShell"); if (shell) shell.classList.add("guard-open");
+    const g = $("#backGuard"); if (g) { g.hidden = false; g.classList.add("open"); }
+    const it = currentList()[state.playerIndex];
+    const pos = bridge.duration > 0 ? bridge.currentTime : (it ? Number(it.watch_seconds) || 0 : 0);
+    const txt = $("#backGuardText");
+    if (txt) txt.textContent = "Your place will be saved at " + fmtClock(pos) + ". You can resume from Continue watching.";
+    if (state.activePlatform === "youtube") ytCommand("pauseVideo");
+    else if (state.activePlatform === "tiktok") tiktokCommand("pause");
+    const b = $("#backGuardContinueBtn"); if (b) b.focus();
+  }
+  function hideBackGuard() {
+    state.backGuardOpen = false;
+    const shell = $("#playerShell"); if (shell) shell.classList.remove("guard-open");
+    const g = $("#backGuard"); if (g) { g.hidden = true; g.classList.remove("open"); }
+  }
+  function handlePlayerBack(fromPopstate) {
+    if ($("#playerModal").hidden) return;
+    if (state.moreOpen) { closeFsMore(); if (fromPopstate) armPlayerHistory(); return; }
+    if (state.backGuardOpen) { hideBackGuard(); if (fromPopstate) armPlayerHistory(); return; }
+    const mode = prefs.backGuard || "ask";
+    if (mode === "off") { closePlayer({ fromPopstate: !!fromPopstate }); return; }
+    if (mode === "double") {
+      const now = Date.now();
+      if (now - state.lastBackPress < 2000) { state.lastBackPress = 0; closePlayer({ fromPopstate: !!fromPopstate }); }
+      else { state.lastBackPress = now; toast("Press Back again to exit."); if (fromPopstate) armPlayerHistory(); }
+      return;
+    }
+    showBackGuard();
+    if (fromPopstate) armPlayerHistory();
+  }
+  let lastProgressFlush = 0;
+  function flushProgress() {
+    const it = currentList()[state.playerIndex];
+    if (!it || $("#playerModal").hidden) return;
+    const now = Date.now();
+    if (now - lastProgressFlush < 1000) return;
+    lastProgressFlush = now;
+    saveProgress(it, true, { keepalive: true });
+  }
+  function toggleAutoResume() {
+    prefs.autoResume = !prefs.autoResume; savePrefs(); syncFsMore();
+    toast(prefs.autoResume ? "Auto-resume on" : "Auto-resume off");
+  }
+  function applyBackGuard(value) {
+    prefs.backGuard = ["ask", "double", "off"].includes(value) ? value : "ask";
+    savePrefs(); syncFsMore();
+    toast(prefs.backGuard === "ask" ? "Back will ask before leaving" : prefs.backGuard === "double" ? "Press Back twice to exit" : "Back exits immediately");
+  }
+
   function embedWithApi(platform, item, url) {
     if (!url) return url;
     try {
@@ -870,9 +952,8 @@
       if (/youtube(-nocookie)?\.com$/.test(u.hostname)) {
         u.searchParams.set("enablejsapi", "1");
         if (/^https?:/.test(location.origin)) u.searchParams.set("origin", location.origin);
-        const pos = Number(item.watch_seconds) || 0;
-        const prog = Number(item.progress) || 0;
-        if (pos > 5 && prog > 0.02 && prog < 0.92) u.searchParams.set("start", String(Math.floor(pos)));
+        const pos = resumePosition(item, "youtube");
+        if (pos > 0) u.searchParams.set("start", String(pos));
       }
       return applySoundParams(platform, u.href);
     } catch { return applySoundParams(platform, url); }
@@ -961,6 +1042,15 @@
     resetBridge(active.platform);
     state.activePlatform = active.platform;
     initSoundFor(active.platform);
+    const rp = resumePosition(item, active.platform);
+    state.pendingTikTokSeek = active.platform === "tiktok" ? rp : 0;
+    if (rp > 0) {
+      // Let the first-open control hint finish before announcing the resume point.
+      clearTimeout(state.resumeToastTimer);
+      state.resumeToastTimer = setTimeout(() => {
+        if (!$("#playerModal").hidden) toast("Resuming from " + fmtClock(rp));
+      }, 3300);
+    }
     const frame = stage.querySelector("iframe");
     if (frame && active.platform === "youtube") {
       frame.addEventListener("load", () => {
@@ -1010,16 +1100,17 @@
     $("#nextBtn").disabled = state.playerIndex >= list.length - 1;
   }
 
-  function closePlayer() {
+  function closePlayer(opts = {}) {
     const item = currentList()[state.playerIndex];
     cancelCountdown();
     stopTracking();
     clearTimeout(state.reportWatchdog);
-    if (item) saveProgress(item, true).then(() => renderContinue());
+    if (item) saveProgress(item, true, { keepalive: true }).then(() => renderContinue());
     closeFsMore();
+    hideBackGuard();
     if (inFullscreen()) exitFullscreen();
     const shell = $("#playerShell");
-    if (shell) shell.classList.remove("pseudo-fs", "details-view", "more-open", "fs-idle");
+    if (shell) shell.classList.remove("pseudo-fs", "details-view", "more-open", "fs-idle", "guard-open");
     state.playerView = "big";
     $("#playerModal").hidden = true;
     $("#playerStage").innerHTML = "";
@@ -1030,6 +1121,14 @@
     clearTimeout(sound.confirmTimer);
     sound.status = "muted"; sound.fallback = false; sound.platform = "";
     updateSoundUI();
+    // If we pushed a history guard entry, remove it when closing from the UI.
+    // When closing because the user already pressed Back (popstate), do not go back again.
+    if (state.playerHistoryActive && !opts.fromPopstate) {
+      state.playerHistoryActive = false;
+      try { history.back(); } catch {}
+    } else {
+      state.playerHistoryActive = false;
+    }
     const back = state.returnFocusId && document.querySelector(`#grid .card[data-id="${state.returnFocusId}"]`);
     if (back) back.focus();
   }
@@ -1229,7 +1328,7 @@
   const PREFS_KEY = "reelroom.prefs.v1";
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
   const prefs = Object.assign({ tvMode: null, theatre: false, autoplay: true, advanceSecs: 0, continueClearedAt: null,
-    soundRemember: true,
+    soundRemember: true, autoResume: true, backGuard: "ask",
     igFullPost: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
   if (!prefs.igAdjust || !prefs.igAdjust.reel) prefs.igAdjust = { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } };
   function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
@@ -1413,6 +1512,12 @@
         if (typeof d.value.duration === "number" && d.value.duration > 0) bridge.duration = d.value.duration;
       }
       if (d.type === "onMute") setSoundConfirmed(d.value === false);
+      if (d.type === "onPlayerReady" && state.pendingTikTokSeek > 0) {
+        const s = state.pendingTikTokSeek; state.pendingTikTokSeek = 0;
+        // TikTok builds its player lazily; retry once shortly after ready.
+        setTimeout(() => tiktokCommand("seekTo", s), 300);
+        setTimeout(() => tiktokCommand("seekTo", s), 1500);
+      }
       if (d.type === "onStateChange" && Number(d.value) === 0) handleEnded();
     }
   }
@@ -1427,20 +1532,25 @@
   function startTracking(item) {
     stopTracking();
     tickTimer = setInterval(() => { bridge.openSeconds += 5; }, 5000);
-    saveTimer = setInterval(() => saveProgress(item, false), 15000);
+    // v16: save often enough that an accidental phone Back loses very little.
+    saveTimer = setInterval(() => saveProgress(item, false), 5000);
   }
   function stopTracking() { clearInterval(tickTimer); clearInterval(saveTimer); tickTimer = saveTimer = null; }
-  async function saveProgress(item, final) {
+  async function saveProgress(item, final, opts = {}) {
     if (!item) return;
     const p = liveProgress();
-    const pos = bridge.duration > 0 ? Math.round(bridge.currentTime) : Math.round(bridge.openSeconds);
+    let pos = bridge.duration > 0 ? Math.round(bridge.currentTime) : Math.round(bridge.openSeconds);
+    // Without real player timing (duration 0), never downgrade a known saved place
+    // just because the embed was opened/closed quickly or Back was pressed early.
+    const known = Number(item.watch_seconds) || 0;
+    if (bridge.duration <= 0 && pos < known) pos = known;
     const payload = { last_opened_at: new Date().toISOString(), watch_seconds: pos };
     if (p > 0) payload.progress = p;
     if (p >= 0.92 && !item.watched) payload.watched = true;
     // don't overwrite a known position with a blank one
     if (!p && !pos && !final) return;
     try {
-      const updated = await api(`/api/items/${item.id}`, { method: "PATCH", body: payload });
+      const updated = await api(`/api/items/${item.id}`, { method: "PATCH", body: payload, keepalive: !!opts.keepalive });
       const idx = state.items.findIndex((i) => i.id === updated.id);
       if (idx >= 0) state.items[idx] = updated;
       if (payload.watched) render();
@@ -1824,6 +1934,19 @@
     if (soundActionBtn) soundActionBtn.addEventListener("click", (e) => { e.stopPropagation(); requestSound(); });
     const fsSoundRememberBtn = $("#fsSoundRememberBtn");
     if (fsSoundRememberBtn) fsSoundRememberBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSoundRemember(); });
+    const fsAutoResumeBtn = $("#fsAutoResumeBtn");
+    if (fsAutoResumeBtn) fsAutoResumeBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleAutoResume(); });
+    const fsBackGuardSelect = $("#fsBackGuardSelect");
+    if (fsBackGuardSelect) fsBackGuardSelect.addEventListener("change", (e) => { e.stopPropagation(); applyBackGuard(e.target.value); });
+    const backGuardContinueBtn = $("#backGuardContinueBtn");
+    if (backGuardContinueBtn) backGuardContinueBtn.addEventListener("click", (e) => {
+      e.stopPropagation(); hideBackGuard();
+      if (state.activePlatform === "youtube") ytCommand("playVideo");
+      else if (state.activePlatform === "tiktok") tiktokCommand("play");
+      focusBigDefault();
+    });
+    const backGuardExitBtn = $("#backGuardExitBtn");
+    if (backGuardExitBtn) backGuardExitBtn.addEventListener("click", (e) => { e.stopPropagation(); closePlayer(); });
     const advSel = $("#advanceSelect");
     if (advSel) advSel.addEventListener("change", (e) => applyAdvanceSecs(e.target.value));
     const fsAdvSel = $("#fsAdvanceSelect");
@@ -1908,10 +2031,18 @@
       noteEl.addEventListener("click", () => noteEl.classList.toggle("expanded"));
     }
     window.addEventListener("message", onPlayerMessage);
-    window.addEventListener("beforeunload", () => {
-      const it = currentList()[state.playerIndex];
-      if (it && !$("#playerModal").hidden) saveProgress(it, true);
+    // v16: phone Back / history guard. The player pushes one history entry so the
+    // hardware Back button can be intercepted instead of instantly leaving the page.
+    window.addEventListener("popstate", () => {
+      if (!state.playerHistoryActive) return;
+      if ($("#playerModal").hidden) { state.playerHistoryActive = false; return; }
+      state.playerHistoryActive = false; // the guard entry was just popped
+      handlePlayerBack(true);
     });
+    // Save on the ways mobile browsers actually leave: tab hidden, pagehide, unload.
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushProgress(); });
+    window.addEventListener("pagehide", () => flushProgress());
+    window.addEventListener("beforeunload", () => flushProgress());
 
     window.addEventListener("resize", () => {
       if (!isMobileLayout() && sidebarOpen()) closeSidebar();
@@ -1926,6 +2057,7 @@
       trapSidebarTab(e);
       if (sidebarOpen() && e.key === "Escape") { closeSidebar(); return; }
       if (e.key === "Escape") {
+        if (state.backGuardOpen) { hideBackGuard(); return; }
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;
@@ -1946,6 +2078,12 @@
           if (e.key === "m" || e.key === "M") { e.preventDefault(); closeFsMore(); }
           return;
         }
+        if (state.backGuardOpen) {
+          if (e.key === "ArrowUp") { e.preventDefault(); moveFsFocus(-1); }
+          if (e.key === "ArrowDown") { e.preventDefault(); moveFsFocus(1); }
+          if (e.key === "Backspace") { e.preventDefault(); hideBackGuard(); }
+          return;
+        }
         if (e.key === "ArrowLeft") { e.preventDefault(); stepPlayer(-1); }
         if (e.key === "ArrowRight") { e.preventDefault(); stepPlayer(1); }
         if (state.playerView === "big" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -1955,7 +2093,7 @@
         if (e.key === "t" || e.key === "T") { e.preventDefault(); toggleDetailsView(); }
         if (e.key === "s" || e.key === "S") { e.preventDefault(); requestSound(); }
         if ((e.key === "m" || e.key === "M") && state.playerView === "big") { e.preventDefault(); toggleFsMore(); }
-        if (e.key === "Backspace") { e.preventDefault(); closePlayer(); }
+        if (e.key === "Backspace") { e.preventDefault(); handlePlayerBack(false); }
         return;
       }
       // grid shortcuts when the player is closed

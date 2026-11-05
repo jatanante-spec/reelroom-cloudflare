@@ -218,6 +218,18 @@
         <button class="fs-btn" id="fsSoundRememberBtn" aria-pressed="true">On</button>
       </div>
       <div class="fs-more-row">
+        <span>Auto-resume</span>
+        <button class="fs-btn" id="fsAutoResumeBtn" aria-pressed="true">On</button>
+      </div>
+      <div class="fs-more-row">
+        <label for="fsBackGuardSelect">Back button</label>
+        <select id="fsBackGuardSelect" aria-label="What the phone Back button does while watching">
+          <option value="ask">Ask first</option>
+          <option value="double">Press twice</option>
+          <option value="off">Exit immediately</option>
+        </select>
+      </div>
+      <div class="fs-more-row">
         <label for="fsAdvanceSelect">Advance after</label>
         <select id="fsAdvanceSelect" aria-label="Auto-advance delay for Facebook and Instagram">
           <option value="0">off</option>
@@ -232,6 +244,17 @@
         <button class="fs-btn" id="fsMoreAdjustBtn" aria-pressed="false">Adjust picture</button>
       </div>
       <p class="fs-more-note" id="fsMoreNote">Playback blocked? Use “Open original”, or add a backup link to the same clip on another site.</p>
+    </div>
+    <!-- v16: accidental phone-Back guard. Saves the moment and asks before leaving. -->
+    <div class="back-guard" id="backGuard" hidden role="dialog" aria-modal="true" aria-label="Leave this video?">
+      <div class="back-guard-card">
+        <strong>Leave this video?</strong>
+        <p id="backGuardText">Your place will be saved. You can resume from Continue watching.</p>
+        <div class="back-guard-actions">
+          <button class="fs-btn back-guard-primary" id="backGuardContinueBtn" type="button">Keep watching</button>
+          <button class="fs-btn" id="backGuardExitBtn" type="button">Exit to library</button>
+        </div>
+      </div>
     </div>
     <div class="upnext" id="upnextBar">
       <div class="upnext-head">

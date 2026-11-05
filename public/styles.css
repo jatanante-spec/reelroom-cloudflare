@@ -783,3 +783,27 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
   .player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: 96px; }
   .sound-hint { bottom: 158px; }
 }
+
+/* ==========================================================================
+   v16 — resume + phone-back guard
+   ========================================================================== */
+
+.back-guard { display: none; }
+.back-guard.open {
+  display: grid; place-items: center; padding: 20px;
+  position: absolute; inset: 0; z-index: 12;
+  background: rgba(0, 0, 0, .68);
+}
+.back-guard-card {
+  width: min(340px, 100%); background: rgba(12, 12, 16, .98);
+  border: 1px solid #3a3a44; border-radius: 16px; padding: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .5); text-align: center; color: #fff;
+}
+.back-guard-card strong { display: block; font-size: 17px; margin-bottom: 8px; }
+.back-guard-card p { margin: 0 0 14px; color: #b9b9c6; font-size: 13px; line-height: 1.5; }
+.back-guard-actions { display: flex; gap: 10px; }
+.back-guard-actions .fs-btn { flex: 1; justify-content: center; padding: 11px 12px; }
+.back-guard-primary { background: #2dd4a7 !important; border-color: #2dd4a7 !important; color: #041210 !important; }
+.back-guard .fs-btn:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+.player-shell.guard-open .sound-helper,
+.player-shell.guard-open .sound-hint { display: none !important; }
