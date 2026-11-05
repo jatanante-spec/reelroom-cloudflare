@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v13";
+  const REELROOM_VERSION = "v14";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -188,6 +188,7 @@
     wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
       state.collection = state.collection === b.dataset.collection ? "" : b.dataset.collection;
       render();
+      closeSidebar();
     }));
   }
 
@@ -200,6 +201,7 @@
     wrap.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
       state.tag = state.tag === b.dataset.tag ? "" : b.dataset.tag;
       render();
+      closeSidebar();
     }));
   }
 
@@ -1095,6 +1097,7 @@
     document.body.classList.toggle("tv-mode", tvEnabled());
     const b = $("#tvModeBtn");
     if (b) { b.setAttribute("aria-pressed", String(tvEnabled())); b.title = tvEnabled() ? "TV mode is on" : "TV / remote mode"; }
+    if (tvEnabled()) closeSidebar(); // TV mode hides the drawer; do not leave it locked open
     if (!$("#playerModal").hidden) {
       syncFsChrome();
       setTimeout(refitStage, 60);
@@ -1487,6 +1490,53 @@
     try { window.history.replaceState({}, "", window.location.pathname); } catch {}
   }
 
+  // ---- v14 mobile sidebar drawer ----
+  function sidebarOpen() { const s = $("#sidebar"); return !!s && s.classList.contains("open"); }
+  function isMobileLayout() {
+    try { return window.matchMedia("(max-width: 900px)").matches; }
+    catch { return window.innerWidth <= 900; }
+  }
+  function setSidebar(open) {
+    const s = $("#sidebar"), scrim = $("#sidebarScrim"), btn = $("#menuBtn");
+    if (!s) return;
+    if (open && !isMobileLayout()) open = false; // desktop sidebar is permanent
+    s.classList.toggle("open", open);
+    document.body.classList.toggle("sidebar-open", open);
+    if (btn) btn.setAttribute("aria-expanded", String(open));
+    if (scrim) scrim.setAttribute("aria-hidden", String(!open));
+    if (open) {
+      const first = s.querySelector(".side-link, .tag-pill, button");
+      if (first) first.focus();
+    } else if (isMobileLayout() && btn && isVisible(btn)) {
+      btn.focus(); // return focus to the hamburger after any dismissal
+    }
+  }
+  function closeSidebar() { setSidebar(false); }
+  function sidebarFocusables() {
+    const s = $("#sidebar");
+    return s ? Array.from(s.querySelectorAll("button:not([disabled]), a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])")).filter(isVisible) : [];
+  }
+  function trapSidebarTab(e) {
+    if (!sidebarOpen() || e.key !== "Tab") return;
+    const list = sidebarFocusables();
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  function sidebarArrowNav(e) {
+    if (!sidebarOpen()) return;
+    if (["ArrowDown", "ArrowUp", "Home", "End"].indexOf(e.key) < 0) return;
+    const list = sidebarFocusables().filter((el) => el.tagName === "BUTTON" || el.tagName === "A");
+    if (!list.length) return;
+    let i = list.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") i = (i + 1) % list.length;
+    else if (e.key === "ArrowUp") i = (i - 1 + list.length) % list.length;
+    else if (e.key === "Home") i = 0;
+    else i = list.length - 1;
+    e.preventDefault(); list[i].focus();
+  }
+
   function applyAutoplayToggle() {
     prefs.autoplay = !prefs.autoplay; savePrefs();
     if (!prefs.autoplay) cancelCountdown();
@@ -1513,14 +1563,33 @@
     $$("[data-close]").forEach((b) => b.addEventListener("click", () => { $("#" + b.dataset.close).hidden = true; }));
     $$(".modal-backdrop").forEach((m) => m.addEventListener("click", (e) => { if (e.target === m) { m.hidden = true; if (m.id === "playerModal") closePlayer(); } }));
 
-    $("#menuBtn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
-    $("#brandLink").addEventListener("click", (e) => { e.preventDefault(); state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); });
+    $("#menuBtn").addEventListener("click", (e) => { e.stopPropagation(); setSidebar(!sidebarOpen()); });
+    const sidebarScrim = $("#sidebarScrim");
+    if (sidebarScrim) sidebarScrim.addEventListener("click", closeSidebar);
+    const sidebarCloseBtn = $("#sidebarCloseBtn");
+    if (sidebarCloseBtn) sidebarCloseBtn.addEventListener("click", closeSidebar);
+    document.addEventListener("click", (e) => {
+      if (sidebarOpen() && !$("#sidebar").contains(e.target) && !$("#menuBtn").contains(e.target)) closeSidebar();
+    });
+    const sidebarEl = $("#sidebar");
+    if (sidebarEl) {
+      sidebarEl.addEventListener("keydown", sidebarArrowNav);
+      let swipeX = null;
+      sidebarEl.addEventListener("touchstart", (e) => { swipeX = e.touches[0].clientX; }, { passive: true });
+      sidebarEl.addEventListener("touchend", (e) => {
+        if (swipeX === null) return;
+        const dx = e.changedTouches[0].clientX - swipeX;
+        swipeX = null;
+        if (dx < -60) closeSidebar(); // swipe left to dismiss
+      }, { passive: true });
+    }
+    $("#brandLink").addEventListener("click", (e) => { e.preventDefault(); state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); });
 
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
     $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
 
-    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); $("#sidebar").classList.remove("open"); }));
-    $$(".platform-link").forEach((b) => b.addEventListener("click", () => { state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); $("#sidebar").classList.remove("open"); }));
+    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
+    $$(".platform-link").forEach((b) => b.addEventListener("click", () => { state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
     $$("#platformChips .chip").forEach((c) => c.addEventListener("click", () => { state.platform = c.dataset.platform; render(); }));
 
     $("#moreBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#moreMenu").hidden = !$("#moreMenu").hidden; });
@@ -1689,6 +1758,7 @@
     });
 
     window.addEventListener("resize", () => {
+      if (!isMobileLayout() && sidebarOpen()) closeSidebar();
       if ($("#playerModal").hidden) return;
       const it = currentList()[state.playerIndex];
       if (it && it.platform === "facebook") sizeFacebookStage(it);
@@ -1697,6 +1767,8 @@
     document.addEventListener("keydown", (e) => {
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      trapSidebarTab(e);
+      if (sidebarOpen() && e.key === "Escape") { closeSidebar(); return; }
       if (e.key === "Escape") {
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
@@ -1707,8 +1779,9 @@
         return;
       }
       if (typing) return;
+      if (sidebarOpen() && e.key === "Backspace") { e.preventDefault(); closeSidebar(); return; }
       if (inFullscreen()) showFsControls();
-      if (e.key === "/") { e.preventDefault(); $("#searchInput").focus(); return; }
+      if (e.key === "/") { e.preventDefault(); closeSidebar(); $("#searchInput").focus(); return; }
       if (!$("#playerModal").hidden) {
         if (state.moreOpen) {
           if (e.key === "ArrowUp") { e.preventDefault(); moveFsFocus(-1); }

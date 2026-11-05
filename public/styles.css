@@ -704,3 +704,38 @@ body.tv-mode .player-shell.pseudo-fs .fs-more-grid { grid-template-columns: 1fr;
 /* Details view is the old detailed popup. It is just the normal shell with
    .pseudo-fs removed; this marker keeps the intent clear for future edits. */
 .player-shell.details-view { /* no extra layout needed */ }
+
+/* ==========================================================================
+   v14 — mobile sidebar drawer: scrim, close button, scroll lock
+   ========================================================================== */
+
+/* Desktop keeps the permanent sidebar; the drawer furniture is hidden. */
+.sidebar-scrim { display: none; }
+.sidebar-head { display: none; }
+
+@media (max-width: 900px) {
+  /* The scrim sits above the topbar but below the drawer, so a tap anywhere
+     outside the sidebar closes it and the page behind cannot be scrolled. */
+  .sidebar-scrim {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0,0,0,.55);
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+  }
+  body.sidebar-open .sidebar-scrim { opacity: 1; pointer-events: auto; }
+  body.sidebar-open { overflow: hidden; }
+
+  .sidebar { z-index: 60; }
+  .sidebar-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 2px 8px 10px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .sidebar-title {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint);
+  }
+  .sidebar-close { width: 34px; height: 34px; flex-shrink: 0; }
+  .sidebar .side-link:focus-visible,
+  .sidebar .tag-pill:focus-visible,
+  .sidebar-close:focus-visible {
+    outline: 3px solid #4b8dff; outline-offset: 1px;
+  }
+}

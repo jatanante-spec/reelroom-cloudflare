@@ -20,7 +20,7 @@
 </head>
 <body>
 <header class="topbar">
-  <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle sidebar">☰</button>
+  <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle sidebar" aria-controls="sidebar" aria-expanded="false">☰</button>
   <a class="brand" href="#" id="brandLink">
     <span class="brand-logo">▶</span>
     <span class="brand-name">Reel<span>Room</span></span>
@@ -44,8 +44,15 @@
   </div>
 </header>
 
+<!-- v14: mobile drawer scrim. Tap outside the sidebar to close it. -->
+<div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>
+
 <div class="layout">
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Library navigation">
+    <div class="sidebar-head">
+      <span class="sidebar-title">Browse</span>
+      <button class="icon-btn sidebar-close" id="sidebarCloseBtn" aria-label="Close menu">✕</button>
+    </div>
     <nav class="side-nav">
       <button class="side-link active" data-view="all"><span class="side-ico">🏠</span> All links</button>
       <button class="side-link" data-view="favorites"><span class="side-ico">★</span> Favorites</button>
