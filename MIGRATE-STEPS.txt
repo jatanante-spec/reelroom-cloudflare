@@ -1,0 +1,148 @@
+==========================================================
+ReelRoom -> Cloudflare Pages   (v11)
+One-time move. About 15 minutes. Nothing is deleted.
+==========================================================
+
+Your Netlify site keeps working throughout. Do NOT delete it.
+It is your fallback until you are happy with the new one.
+
+----------------------------------------------------------
+PART 1 - Save your links  (do this first)
+----------------------------------------------------------
+1. Open your current site:
+   https://guileless-cocada-dc64e8.netlify.app
+2. Tap the  ...  menu (top right) -> Export.
+3. A file called  reelroom-library.json  downloads.
+   Keep it safe. This is your whole collection.
+
+----------------------------------------------------------
+PART 2 - Put this version on GitHub
+----------------------------------------------------------
+We use a NEW repository so the old one stays untouched.
+
+4. Go to  https://github.com/new
+5. Repository name:  reelroom-cloudflare
+6. Leave it Public (or Private, both work). Click "Create repository".
+7. On the new empty repo page, click "uploading an existing file".
+8. Unzip  reelroom-cloudflare-v11.zip  on your device.
+9. Drag EVERYTHING from inside the unzipped folder into GitHub.
+   You should see these arrive:
+      public/          (folder)
+      functions/       (folder)
+      lib/             (folder)
+      scripts/         (folder)
+      tests/           (folder)
+      package.json
+      MIGRATE-STEPS.txt
+      wrangler.toml.example
+      .env.example
+      .gitignore
+10. Click "Commit changes".
+
+----------------------------------------------------------
+PART 3 - Create the Cloudflare account and database
+----------------------------------------------------------
+11. Go to  https://dash.cloudflare.com/sign-up
+    Sign up free. No credit card is needed.
+12. In the left menu, find  Storage & Databases  ->  D1
+    (on some accounts it is under  Workers & Pages  ->  D1)
+13. Click "Create database".
+    Name it:  reelroom
+    Click Create.
+    That is all - you do NOT need to run any SQL.
+    The app creates its own table the first time it runs.
+
+----------------------------------------------------------
+PART 4 - Connect the site
+----------------------------------------------------------
+14. In the left menu go to  Workers & Pages.
+15. Click  Create  ->  Pages  ->  "Connect to Git".
+16. Choose GitHub and authorise it, then pick  reelroom-cloudflare.
+17. Build settings - set exactly these:
+       Framework preset:        None
+       Build command:           npm run build
+       Build output directory:  public
+    Leave everything else as it is.
+18. Click "Save and Deploy". Let it finish (about a minute).
+
+----------------------------------------------------------
+PART 5 - Connect the database and set your password
+----------------------------------------------------------
+This is the step people miss. The site will not save links
+until the database is connected.
+
+19. Open your new Pages project ->  Settings  ->  Bindings
+    (older layouts: Settings -> Functions -> D1 database bindings)
+20. Click  Add  ->  choose  D1 database.
+       Variable name:   DB          <- must be exactly DB, capital letters
+       D1 database:     reelroom
+    Click Save.
+21. Go to  Settings  ->  Environment variables.
+22. Add a variable:
+       Name:   REELROOM_PASSWORD
+       Value:  the password you want to use
+    Add it for Production. Click Save.
+23. Optional but recommended - add a second variable:
+       Name:   NO_SEED
+       Value:  1
+    This starts you with an empty library instead of 8 demo items.
+24. Go to the  Deployments  tab, open the top deployment's  ...  menu
+    and click "Retry deployment" so the new settings take effect.
+
+----------------------------------------------------------
+PART 6 - Load your links and check it
+----------------------------------------------------------
+25. Open your new site address (looks like
+    https://reelroom-cloudflare.pages.dev ).
+26. Enter the password you set in step 22.
+27. Tap  ...  -> Import, and choose  reelroom-library.json
+    from Part 1.
+28. Check:
+      - your links appear with pictures
+      - search works
+      - a video plays inside the page
+      - the badge at the top right says  v10
+    (v10 is the app version. v11 is this hosting move - the app
+     itself is unchanged, which is exactly what we want.)
+
+----------------------------------------------------------
+DONE. Your everyday update routine, from now on
+----------------------------------------------------------
+Same as before, just a different repository:
+
+  https://github.com/jatanante-spec/reelroom-cloudflare/upload/main/public
+
+Drag the changed file(s) in, commit, and Cloudflare rebuilds
+by itself in about a minute. No credits, no deploy budget.
+
+----------------------------------------------------------
+If something looks wrong
+----------------------------------------------------------
+"Database not connected. Add a D1 binding named DB"
+    -> Step 20 was missed, or the variable is not exactly DB.
+       Fix the binding, then retry the deployment (step 24).
+
+Links do not save / error when adding
+    -> Same cause as above. Check the binding.
+
+Asks for a password you did not set
+    -> Check Settings -> Environment variables for REELROOM_PASSWORD.
+
+Pictures or titles missing on Instagram/Facebook
+    -> Give it a minute; the app fills them in in the background.
+       You can also open a card and use its refresh action.
+
+Nothing redeployed after a GitHub upload
+    -> Pages project -> Settings -> Builds & deployments, check the
+       Git connection is still authorised.
+
+----------------------------------------------------------
+Free plan numbers, for reference
+----------------------------------------------------------
+  500 builds a month             (Netlify gave you about 20)
+  Unlimited page/asset traffic
+  100,000 API calls a day
+  5 GB of database storage       (your 500 links use about 0.3 MB)
+
+You would need well over a thousand regular users before any of
+these become a cost.
