@@ -564,3 +564,61 @@ body.tv-mode .tv-hint { display: block; }
 /* the edge strips must not swallow the new bar */
 .player-shell:fullscreen .fs-hit-bottom,
 .player-shell.pseudo-fs .fs-hit-bottom { height: 40px; }
+
+/* ==========================================================================
+   v12 — installable app
+   ========================================================================== */
+
+/* Install help modal */
+.install-hero {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px; margin-bottom: 14px;
+  background: var(--bg-elev2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.install-hero img { border-radius: 14px; flex-shrink: 0; display: block; }
+.install-hero strong { display: block; font-size: 15px; margin-bottom: 2px; }
+.install-hero span { color: var(--text-dim); font-size: 13px; }
+.install-platform {
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 8px;
+}
+.install-steps { margin: 0 0 10px; padding-left: 22px; color: var(--text); }
+.install-steps li { margin-bottom: 8px; line-height: 1.5; }
+.install-glyph { vertical-align: -3px; color: var(--accent); }
+.install-note {
+  margin: 0 0 6px; padding: 9px 11px; font-size: 12.5px; color: var(--text-dim);
+  background: var(--bg-elev); border-left: 3px solid var(--border); border-radius: 6px;
+}
+#installModal .modal-actions { justify-content: flex-end; }
+
+/* Notch / home-indicator spacing.
+   Only applied when actually launched from the home screen, so ordinary
+   browser layout (and the v9/v10 fullscreen maths) is left untouched. */
+body.standalone .topbar {
+  height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body.standalone .layout {
+  padding-top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+}
+body.standalone .sidebar {
+  top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+body.standalone .main {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+/* Keep the toast clear of the iPhone home indicator. */
+body.standalone .toast {
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+}
+
+/* The fullscreen ✕ must stay clear of a notch in landscape.
+   env() is 0 on devices without one, so this is a no-op elsewhere. */
+.player-shell:fullscreen .fs-exit,
+.player-shell.pseudo-fs .fs-exit {
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+}

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v10";
+  const REELROOM_VERSION = "v12";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -346,7 +346,7 @@
       badge.style.cssText = "font-size:11px;color:#9a9a9a;border:1px solid #3a3a3a;border-radius:6px;padding:2px 6px;flex-shrink:0;";
       top.appendChild(badge);
     }
-    try { console.log("ReelRoom " + REELROOM_VERSION + " (Instagram crop, own fullscreen controls)"); } catch {}
+    try { console.log("ReelRoom " + REELROOM_VERSION + " (installable app, Instagram crop, own fullscreen controls)"); } catch {}
   }
 
   function ensurePlayerActionButtons() {
@@ -1249,6 +1249,106 @@
     });
   }
 
+  // ---------- v12: installable app ----------
+  // Deliberately NO service worker in this version: caching the app shell would
+  // risk serving stale builds, and updates ship often. Modern Chrome installs
+  // from the manifest alone. Offline support can be added later if wanted.
+  let installPrompt = null;
+
+  function isStandalone() {
+    try {
+      return window.matchMedia("(display-mode: standalone)").matches ||
+             window.matchMedia("(display-mode: fullscreen)").matches ||
+             window.matchMedia("(display-mode: minimal-ui)").matches ||
+             window.navigator.standalone === true;
+    } catch { return false; }
+  }
+
+  function isIos() {
+    const ua = navigator.userAgent || "";
+    // iPadOS 13+ reports as Macintosh, so check touch points too.
+    return /iPad|iPhone|iPod/.test(ua) ||
+           (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  }
+
+  function setupInstall() {
+    const standalone = isStandalone();
+    document.body.classList.toggle("standalone", standalone);
+    const btn = $("#installAppBtn");
+    if (!btn) return;
+    if (standalone) { btn.hidden = true; return; }
+
+    // Chromium tells us when a real install is available.
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      installPrompt = e;
+      btn.textContent = "Install ReelRoom";
+      btn.hidden = false;
+    });
+    window.addEventListener("appinstalled", () => {
+      installPrompt = null;
+      btn.hidden = true;
+      document.body.classList.add("standalone");
+      toast("ReelRoom installed \u2014 find it on your home screen");
+    });
+
+    // iOS has no install event; offer the manual steps instead.
+    if (isIos()) {
+      btn.textContent = "Add to Home Screen";
+      btn.hidden = false;
+    }
+    // Other browsers: stay hidden rather than offer a button that cannot work.
+  }
+
+  function openInstallHelp() {
+    const ios = isIos();
+    // Fire TV / Silk identifies as Android but cannot install web apps, so it
+    // must not be shown the Android steps. Route TVs to the generic panel.
+    let tv = false;
+    try { tv = looksLikeTV(); } catch {}
+    const android = /Android/i.test(navigator.userAgent || "") && !tv;
+    $("#installIos").hidden = !ios;
+    $("#installAndroid").hidden = ios || !android;
+    $("#installOther").hidden = ios || android;
+    $("#installModal").hidden = false;
+  }
+
+  async function doInstall() {
+    if (installPrompt) {
+      const evt = installPrompt;
+      installPrompt = null;
+      try {
+        evt.prompt();
+        const choice = await evt.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          $("#installAppBtn").hidden = true;
+        } else {
+          // Dismissed: keep the menu entry so it can be retried from the menu.
+          openInstallHelp();
+        }
+      } catch { openInstallHelp(); }
+      return;
+    }
+    openInstallHelp();
+  }
+
+  // Home-screen long-press shortcuts (manifest "shortcuts").
+  function applyLaunchShortcut() {
+    let params;
+    try { params = new URLSearchParams(window.location.search); } catch { return; }
+    const add = params.get("add");
+    const view = params.get("view");
+    if (!add && !view) return;
+    if (view === "favorites" || view === "unwatched" || view === "all") {
+      state.view = view;
+      $$(".side-link[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+      render();
+    }
+    if (add === "1") { $("#addModal").hidden = false; }
+    // Clean the URL so a refresh does not re-trigger the shortcut.
+    try { window.history.replaceState({}, "", window.location.pathname); } catch {}
+  }
+
   function bind() {
     $("#addBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
     $("#emptyAddBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
@@ -1273,6 +1373,7 @@
       if (act === "import") $("#importFile").click();
       if (act === "clear-demo") clearDemo();
       if (act === "logout") doLogout();
+      if (act === "install") doInstall();
     });
     $("#clearDemoBtn").addEventListener("click", clearDemo);
     $("#importFile").addEventListener("change", (e) => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ""; });
@@ -1420,7 +1521,8 @@
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       if (e.key === "Escape") {
         if (inFullscreen()) { exitFullscreen(); return; }
-        if (!$("#editModal").hidden) $("#editModal").hidden = true;
+        if (!$("#installModal").hidden) $("#installModal").hidden = true;
+        else if (!$("#editModal").hidden) $("#editModal").hidden = true;
         else if (!$("#addModal").hidden) $("#addModal").hidden = true;
         else if (!$("#playerModal").hidden) closePlayer();
         else if (tvEnabled() && document.activeElement && document.activeElement.closest(".card")) document.activeElement.blur();
@@ -1454,8 +1556,9 @@
   }
 
   bind();
+  setupInstall();
   applyTvMode();
   if (prefs.theatre) $("#playerModal").classList.add("theatre");
   updateFsBtn();
-  checkAuth().then((ok) => { if (ok) loadItems(); });
+  checkAuth().then((ok) => { if (ok) { loadItems(); applyLaunchShortcut(); } });
 })();
