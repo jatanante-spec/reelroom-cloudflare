@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v20";
+  const REELROOM_VERSION = "v21";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -30,6 +30,9 @@
     swipeTouch: null,
     navAutoplayAt: 0,
     autoplayNudgeTimers: [],
+    fbNativeVideo: null,
+    fbStreamSeq: 0,
+    fbStreamFailed: new Set(),
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -757,7 +760,7 @@
   function saveSoundSession(on) { try { if (on) sessionStorage.setItem(SOUND_SESSION_KEY, "on"); else sessionStorage.removeItem(SOUND_SESSION_KEY); } catch {} }
   sound.sessionOn = loadSoundSession();
   function soundRememberOn() { return prefs.soundRemember !== false; }
-  function canHostUnmute(platform) { return platform === "youtube" || platform === "tiktok"; }
+  function canHostUnmute(platform) { return platform === "youtube" || platform === "tiktok" || (platform === "facebook" && !!state.fbNativeVideo); }
   function shouldStartMuted(platform) {
     if (!soundRememberOn() || !sound.sessionOn) return true;
     return !canHostUnmute(platform);
@@ -796,6 +799,11 @@
   function sendUnmute(platform) {
     if (platform === "youtube") { ytCommand("unMute"); ytCommand("playVideo"); }
     else if (platform === "tiktok") { tiktokCommand("unMute"); }
+    else if (platform === "facebook" && state.fbNativeVideo) {
+      const v = state.fbNativeVideo;
+      v.muted = false;
+      const p = v.play(); if (p && p.catch) p.catch(() => {});
+    }
   }
   function setSoundConfirmed(on) {
     clearTimeout(sound.confirmTimer);
@@ -930,6 +938,7 @@
     clearAutoplayNudges();
     if (state.activePlatform === "youtube") ytCommand("pauseVideo");
     else if (state.activePlatform === "tiktok") tiktokCommand("pause");
+    else if (state.activePlatform === "facebook" && state.fbNativeVideo) { try { state.fbNativeVideo.pause(); } catch {} }
     const b = $("#backGuardContinueBtn"); if (b) b.focus();
     updateSwipeLayer();
   }
@@ -1081,6 +1090,8 @@
     $("#watchedBtn").textContent = item.watched ? "✓ Watched" : "Mark watched";
 
     const stage = $("#playerStage");
+    state.fbNativeVideo = null;
+    state.fbStreamSeq++;
     ensurePlayerActionButtons();
 
     const sources = activeSources(item);
@@ -1209,6 +1220,16 @@
       }
     }
 
+    // v21: Facebook-hosted stream upgrade. The regular iframe is already in the
+    // stage as the fallback; if the stream endpoint succeeds, replace it with a
+    // native <video> that can autoplay muted after swipe. If anything fails, the
+    // iframe remains and the user can tap Facebook's Play button once.
+    if (!useBackup && active.platform === "facebook" &&
+        (item.media_type === "video" || item.media_type === "reel") &&
+        !embed.includes("/plugins/post.php") && !state.fbStreamFailed.has(item.id)) {
+      tryFacebookStreamUpgrade(item, state.fbStreamSeq);
+    }
+
     const list = currentList();
     $("#prevBtn").disabled = state.playerIndex <= 0;
     $("#nextBtn").disabled = state.playerIndex >= list.length - 1;
@@ -1219,6 +1240,9 @@
     cancelCountdown();
     stopTracking();
     clearAutoplayNudges();
+    if (state.fbNativeVideo) { try { state.fbNativeVideo.pause(); } catch {} }
+    state.fbNativeVideo = null;
+    state.fbStreamSeq++;
     clearTimeout(state.reportWatchdog);
     if (item) saveProgress(item, true, { keepalive: true }).then(() => renderContinue());
     if (opts.undo && item) showUndo(item); else hideUndo();
@@ -1620,6 +1644,94 @@
     });
   }
 
+  // ---- v21: Facebook-hosted stream with iframe fallback ----
+  function tryFacebookStreamUpgrade(item, seq) {
+    api(`/api/items/${item.id}/stream`).then((data) => {
+      if (seq !== state.fbStreamSeq || $("#playerModal").hidden) return;
+      const cur = currentList()[state.playerIndex];
+      if (!cur || cur.id !== item.id || state.activePlatform !== "facebook") return;
+      const url = data && data.ok ? safeUrl(data.stream_url) : "";
+      if (!url) return;
+      mountFacebookNativeVideo(item, url, seq);
+    }).catch(() => { /* regular Facebook iframe remains as fallback */ });
+  }
+
+  function mountFacebookNativeVideo(item, url, seq) {
+    const box = document.getElementById("stageBox");
+    if (!box || seq !== state.fbStreamSeq) return;
+    const video = document.createElement("video");
+    video.className = "fb-native-video";
+    video.src = url;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.controls = true;
+    video.preload = "metadata";
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000;display:block;";
+    box.innerHTML = "";
+    box.appendChild(video);
+    state.fbNativeVideo = video;
+    state.fbAutoFit = true;
+    lastFitKey = "";
+    resetBridge("facebook");
+    const sync = () => {
+      if (state.fbNativeVideo !== video) return;
+      bridge.currentTime = video.currentTime || 0;
+      if (video.duration > 0) bridge.duration = video.duration;
+    };
+    video.addEventListener("loadedmetadata", () => {
+      sync();
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        aspectCache.set(item.id, video.videoWidth / video.videoHeight);
+        lastFitKey = "";
+        fitFacebook(item);
+      }
+    });
+    video.addEventListener("timeupdate", sync);
+    video.addEventListener("durationchange", sync);
+    video.addEventListener("play", () => { bridge.playerState = 1; clearAutoplayNudges(); });
+    video.addEventListener("playing", () => { bridge.playerState = 1; clearAutoplayNudges(); });
+    video.addEventListener("pause", () => { bridge.playerState = 2; });
+    video.addEventListener("ended", () => { bridge.playerState = 0; sync(); handleEnded(); });
+    video.addEventListener("volumechange", () => { setSoundConfirmed(!video.muted && video.volume > 0); });
+    video.addEventListener("error", () => { fallbackFacebookIframe(item, seq); });
+    initSoundFor("facebook", { mutedStart: true });
+    cancelCountdown();
+    renderUpNext({ ...item, platform: "facebook" });
+    const note = document.querySelector(".embed-note");
+    if (note) note.textContent = "Playing a Facebook-hosted stream. If it stops working, ReelRoom will switch back to the regular Facebook player.";
+    scheduleFacebookNativePlay(video);
+    updateSoundUI();
+  }
+
+  function fallbackFacebookIframe(item, seq) {
+    if (seq !== state.fbStreamSeq) return;
+    state.fbStreamFailed.add(item.id);
+    state.fbNativeVideo = null;
+    clearAutoplayNudges();
+    renderPlayer(item);
+    toast("Facebook stream unavailable — using the regular Facebook player.");
+  }
+
+  function scheduleFacebookNativePlay(video) {
+    clearAutoplayNudges();
+    const token = state.navAutoplayAt;
+    const attempt = () => {
+      if (state.fbNativeVideo !== video || $("#playerModal").hidden || state.backGuardOpen) return;
+      if (!video.paused && video.currentTime > 0.75) { clearAutoplayNudges(); return; }
+      video.muted = true;
+      const p = video.play(); if (p && p.catch) p.catch(() => {});
+    };
+    attempt();
+    [350, 950, 1800, 3000, 4500].forEach((ms) => {
+      const t = setTimeout(() => { if (state.navAutoplayAt === token || token === 0) attempt(); }, ms);
+      state.autoplayNudgeTimers.push(t);
+    });
+  }
+
   // ---- playback bridge: YouTube + TikTok report position and ending ----
   const bridge = { win: null, platform: "", currentTime: 0, duration: 0, ended: false, openSeconds: 0, playerState: -1 };
   function resetBridge(platform) {
@@ -1686,7 +1798,7 @@
       }
     }
   }
-  function reportsProgress(platform) { return platform === "youtube" || platform === "tiktok"; }
+  function reportsProgress(platform) { return platform === "youtube" || platform === "tiktok" || (platform === "facebook" && !!state.fbNativeVideo); }
   function liveProgress() {
     if (bridge.duration > 0) return Math.min(1, Math.max(0, bridge.currentTime / bridge.duration));
     return 0;
