@@ -812,11 +812,26 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
    v17 — Smart Back, Undo, swipe navigation, honest Continue watching
    ========================================================================== */
 
+/* v18: Anywhere swipe must not block the embed's centre Play button.
+   The layer itself is click-through; only the four surrounding zones capture
+   gestures. The empty centre cell is a real tap-through hole. */
 .swipe-layer {
+  --swipe-hole: 132px;
   position: absolute; inset: 0; z-index: 4;
-  background: transparent; touch-action: none;
+  display: grid; pointer-events: none;
+  grid-template-columns: 1fr var(--swipe-hole) 1fr;
+  grid-template-rows: 1fr var(--swipe-hole) 1fr;
+  background: transparent;
 }
 .swipe-layer[hidden] { display: none; }
+.swipe-zone { pointer-events: auto; touch-action: none; background: transparent; }
+.swipe-zone-top { grid-area: 1 / 1 / 2 / 4; }
+.swipe-zone-left { grid-area: 2 / 1 / 3 / 2; }
+.swipe-zone-right { grid-area: 2 / 3 / 3 / 4; }
+.swipe-zone-bottom { grid-area: 3 / 1 / 4 / 4; }
+@media (max-width: 360px) {
+  .swipe-layer { --swipe-hole: 108px; }
+}
 .swipe-hint {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   z-index: 11; padding: 10px 16px; border-radius: 999px;

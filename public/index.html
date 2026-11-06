@@ -149,9 +149,15 @@
       </div>
     </div>
     <div class="player-stage" id="playerStage"></div>
-    <!-- v17: optional gesture layer for "swipe anywhere". Hidden by default so
-         normal embed controls keep working; edge/controls swipe works without it. -->
-    <div class="swipe-layer" id="swipeLayer" hidden aria-hidden="true"></div>
+    <!-- v18: "swipe anywhere" uses four gesture zones around a centre hole.
+         The hole lets the embed's centre Play button receive taps; the zones
+         still recognise vertical swipes. Hidden unless Anywhere mode is on. -->
+    <div class="swipe-layer" id="swipeLayer" hidden aria-hidden="true">
+      <div class="swipe-zone swipe-zone-top"></div>
+      <div class="swipe-zone swipe-zone-left"></div>
+      <div class="swipe-zone swipe-zone-right"></div>
+      <div class="swipe-zone swipe-zone-bottom"></div>
+    </div>
     <div class="swipe-hint" id="swipeHint" aria-hidden="true">Next video</div>
     <!-- v15: obvious sound helper. Sits above the video, never inside the embed. -->
     <button class="sound-helper" id="soundHelperBtn" type="button" hidden aria-pressed="false">

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v17";
+  const REELROOM_VERSION = "v18";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -974,7 +974,7 @@
   function applySwipeNav(value) {
     prefs.swipeNav = ["edges", "anywhere", "off"].includes(value) ? value : "edges";
     savePrefs(); syncFsMore(); updateSwipeLayer();
-    toast(prefs.swipeNav === "edges" ? "Swipe on edges / controls" : prefs.swipeNav === "anywhere" ? "Swipe anywhere on the video" : "Swipe navigation off");
+    toast(prefs.swipeNav === "edges" ? "Swipe on edges / controls" : prefs.swipeNav === "anywhere" ? "Swipe anywhere; centre Play stays tappable" : "Swipe navigation off");
   }
   function toggleReelsMode() {
     prefs.reelsMode = !prefs.reelsMode; savePrefs(); syncFsMore();
