@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v16";
+  const REELROOM_VERSION = "v17";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -25,6 +25,9 @@
     lastBackPress: 0,
     playerHistoryActive: false,
     pendingTikTokSeek: 0,
+    undoId: null,
+    undoTimer: null,
+    swipeTouch: null,
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -260,7 +263,7 @@
       <span class="badge ${item.platform}">${esc(PLATFORM_LABEL[item.platform] || item.platform)}</span>
       ${item.demo ? '<span class="demo-badge">DEMO</span>' : ""}
       <span class="type-badge">${esc(TYPE_LABEL[item.media_type] || item.media_type)}</span>
-      ${Number(item.progress) > 0.02 && !item.watched ? `<span class="resume-badge">Resume</span><span class="thumb-progress"><i style="width:${Math.round(Math.min(1, Number(item.progress)) * 100)}%"></i></span>` : ""}
+      ${Number(item.progress) > 0.02 && !item.watched ? `<span class="resume-badge">${canResumePlatform(item.platform) ? "Resume" : "Reopen"}</span><span class="thumb-progress"><i style="width:${Math.round(Math.min(1, Number(item.progress)) * 100)}%"></i></span>` : ""}
       <div class="play-overlay"><span>▶</span></div>
     </div>`;
   }
@@ -327,6 +330,7 @@
     state.useBackup = null;
     $("#playerModal").hidden = false;
     document.body.style.overflow = "hidden";
+    hideUndo();
     if (!state.playerHistoryActive) armPlayerHistory();
     // v13: open the big view immediately. This is the CSS-based big layout
     // (pseudo-fs), not the browser Fullscreen API, so it behaves the same on
@@ -648,7 +652,7 @@
       const p = $("#cropAdjust"); if (p) { p.hidden = true; p.classList.remove("open"); }
       const ab = $("#fsAdjustBtn"); if (ab) ab.setAttribute("aria-pressed", "false");
     }
-    updateSoundUI();
+    updateSoundUI(); updateSwipeLayer();
   }
 
   // ---- v13 More panel: occasional actions without cluttering the big view ----
@@ -662,12 +666,14 @@
     clearTimeout(fsIdleTimer);
     syncFsMore();
     const first = $("#fsMoreFavBtn"); if (first) first.focus();
+    updateSwipeLayer();
   }
   function closeFsMore() {
     state.moreOpen = false;
     const p = $("#fsMorePanel"); if (p) { p.hidden = true; p.classList.remove("open"); }
     const shell = $("#playerShell"); if (shell) shell.classList.remove("more-open");
     const b = $("#fsMoreBtn"); if (b) b.setAttribute("aria-pressed", "false");
+    updateSwipeLayer();
   }
   function toggleFsMore() { if (state.moreOpen) closeFsMore(); else openFsMore(); }
   function syncFsMore() {
@@ -685,8 +691,10 @@
     const ap = $("#fsAutoplayBtn"); if (ap) { ap.textContent = prefs.autoplay ? "On" : "Off"; ap.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
     const rem = $("#fsSoundRememberBtn"); if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
     const ar = $("#fsAutoResumeBtn"); if (ar) { ar.textContent = prefs.autoResume ? "On" : "Off"; ar.setAttribute("aria-pressed", String(!!prefs.autoResume)); }
-    const bg = $("#fsBackGuardSelect"); if (bg) bg.value = prefs.backGuard || "ask";
-    updateSoundUI();
+    const bg = $("#fsBackGuardSelect"); if (bg) bg.value = prefs.backGuard || "smart";
+    const sw = $("#fsSwipeNavSelect"); if (sw) sw.value = prefs.swipeNav || "edges";
+    const rm = $("#fsReelsModeBtn"); if (rm) { rm.textContent = prefs.reelsMode ? "On" : "Off"; rm.setAttribute("aria-pressed", String(!!prefs.reelsMode)); }
+    updateSoundUI(); updateSwipeLayer();
     const adv = $("#fsAdvanceSelect"); if (adv) adv.value = String(prefs.advanceSecs);
     const igRow = $("#fsMoreIgRow"); if (igRow) igRow.hidden = !state.igActive;
     const fp = $("#fsMoreFullPostBtn"); if (fp) { fp.textContent = prefs.igFullPost ? "Crop to video" : "Show full post"; fp.setAttribute("aria-pressed", String(!!prefs.igFullPost)); }
@@ -901,25 +909,41 @@
     const it = currentList()[state.playerIndex];
     const pos = bridge.duration > 0 ? bridge.currentTime : (it ? Number(it.watch_seconds) || 0 : 0);
     const txt = $("#backGuardText");
-    if (txt) txt.textContent = "Your place will be saved at " + fmtClock(pos) + ". You can resume from Continue watching.";
+    const platform = state.activePlatform || (it && it.platform);
+    if (txt) {
+      txt.textContent = canResumePlatform(platform)
+        ? "Your place will be saved at " + fmtClock(pos) + ". You can resume from Continue watching."
+        : "This platform cannot resume the exact place. ReelRoom will remember the video, and you can Undo if this was accidental.";
+    }
     if (state.activePlatform === "youtube") ytCommand("pauseVideo");
     else if (state.activePlatform === "tiktok") tiktokCommand("pause");
     const b = $("#backGuardContinueBtn"); if (b) b.focus();
+    updateSwipeLayer();
   }
   function hideBackGuard() {
     state.backGuardOpen = false;
     const shell = $("#playerShell"); if (shell) shell.classList.remove("guard-open");
     const g = $("#backGuard"); if (g) { g.hidden = true; g.classList.remove("open"); }
+    updateSwipeLayer();
   }
+  function canResumePlatform(platform) { return platform === "youtube" || platform === "tiktok"; }
   function handlePlayerBack(fromPopstate) {
     if ($("#playerModal").hidden) return;
     if (state.moreOpen) { closeFsMore(); if (fromPopstate) armPlayerHistory(); return; }
     if (state.backGuardOpen) { hideBackGuard(); if (fromPopstate) armPlayerHistory(); return; }
-    const mode = prefs.backGuard || "ask";
-    if (mode === "off") { closePlayer({ fromPopstate: !!fromPopstate }); return; }
+    const mode = prefs.backGuard || "smart";
+    const it = currentList()[state.playerIndex];
+    const platform = state.activePlatform || (it && it.platform);
+    const pos = bridge.duration > 0 ? bridge.currentTime : (it ? Number(it.watch_seconds) || 0 : 0);
+    const usefulResume = canResumePlatform(platform) && pos > 5 && Number((it && it.progress) || 0) < 0.92 && !(it && it.watched);
+    // Smart: protect resume where it actually works; otherwise exit cleanly + Undo.
+    if (mode === "off" || (mode === "smart" && !usefulResume)) {
+      closePlayer({ fromPopstate: !!fromPopstate, undo: true });
+      return;
+    }
     if (mode === "double") {
       const now = Date.now();
-      if (now - state.lastBackPress < 2000) { state.lastBackPress = 0; closePlayer({ fromPopstate: !!fromPopstate }); }
+      if (now - state.lastBackPress < 2000) { state.lastBackPress = 0; closePlayer({ fromPopstate: !!fromPopstate, undo: true }); }
       else { state.lastBackPress = now; toast("Press Back again to exit."); if (fromPopstate) armPlayerHistory(); }
       return;
     }
@@ -940,9 +964,69 @@
     toast(prefs.autoResume ? "Auto-resume on" : "Auto-resume off");
   }
   function applyBackGuard(value) {
-    prefs.backGuard = ["ask", "double", "off"].includes(value) ? value : "ask";
+    prefs.backGuard = ["smart", "ask", "double", "off"].includes(value) ? value : "smart";
     savePrefs(); syncFsMore();
-    toast(prefs.backGuard === "ask" ? "Back will ask before leaving" : prefs.backGuard === "double" ? "Press Back twice to exit" : "Back exits immediately");
+    toast(prefs.backGuard === "smart" ? "Smart Back: protects resume, Undo elsewhere"
+      : prefs.backGuard === "ask" ? "Back will ask before leaving"
+      : prefs.backGuard === "double" ? "Press Back twice to exit"
+      : "Back exits immediately");
+  }
+  function applySwipeNav(value) {
+    prefs.swipeNav = ["edges", "anywhere", "off"].includes(value) ? value : "edges";
+    savePrefs(); syncFsMore(); updateSwipeLayer();
+    toast(prefs.swipeNav === "edges" ? "Swipe on edges / controls" : prefs.swipeNav === "anywhere" ? "Swipe anywhere on the video" : "Swipe navigation off");
+  }
+  function toggleReelsMode() {
+    prefs.reelsMode = !prefs.reelsMode; savePrefs(); syncFsMore();
+    toast(prefs.reelsMode ? "Reels mode: swipes move through short/vertical videos" : "Reels mode off");
+  }
+  function isVerticalItem(item) {
+    return !!item && (item.media_type === "reel" || item.media_type === "short" || item.platform === "tiktok");
+  }
+  function hideUndo() {
+    state.undoId = null; clearTimeout(state.undoTimer);
+    const bar = $("#undoBar"); if (bar) bar.hidden = true;
+  }
+  function showUndo(item) {
+    if (!item) return;
+    state.undoId = item.id;
+    const bar = $("#undoBar"), txt = $("#undoText");
+    if (txt) txt.textContent = canResumePlatform(item.platform)
+      ? "Video closed. Resume is saved."
+      : "Video closed. Exact resume is not supported.";
+    if (bar) bar.hidden = false;
+    clearTimeout(state.undoTimer);
+    state.undoTimer = setTimeout(hideUndo, 6000);
+  }
+  function updateSwipeLayer() {
+    const layer = $("#swipeLayer"); if (!layer) return;
+    const crop = $("#cropAdjust");
+    const on = prefs.swipeNav === "anywhere" && !$("#playerModal").hidden &&
+      state.playerView === "big" && !state.moreOpen && !state.backGuardOpen && (!crop || crop.hidden);
+    layer.hidden = !on;
+  }
+  function flashSwipeHint(text) {
+    const hint = $("#swipeHint"); if (!hint) return;
+    hint.textContent = text; hint.classList.add("show");
+    clearTimeout(flashSwipeHint._t);
+    flashSwipeHint._t = setTimeout(() => hint.classList.remove("show"), 750);
+  }
+  function swipeStep(dir) {
+    if ($("#playerModal").hidden || state.playerView !== "big") return;
+    if (state.moreOpen || state.backGuardOpen) return;
+    const crop = $("#cropAdjust"); if (crop && !crop.hidden) return;
+    if (prefs.swipeNav === "off") return;
+    const list = currentList();
+    if (!list.length || state.playerIndex < 0) return;
+    let target = state.playerIndex + dir;
+    if (prefs.reelsMode) {
+      while (target >= 0 && target < list.length && !isVerticalItem(list[target])) target += dir;
+    }
+    if (target < 0) { flashSwipeHint("Start of list"); return; }
+    if (target >= list.length) { flashSwipeHint("End of list"); return; }
+    flashSwipeHint(dir > 0 ? "Next video" : "Previous video");
+    showFsControls();
+    stepPlayer(target - state.playerIndex);
   }
 
   function embedWithApi(platform, item, url) {
@@ -1106,6 +1190,7 @@
     stopTracking();
     clearTimeout(state.reportWatchdog);
     if (item) saveProgress(item, true, { keepalive: true }).then(() => renderContinue());
+    if (opts.undo && item) showUndo(item); else hideUndo();
     closeFsMore();
     hideBackGuard();
     if (inFullscreen()) exitFullscreen();
@@ -1328,9 +1413,15 @@
   const PREFS_KEY = "reelroom.prefs.v1";
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
   const prefs = Object.assign({ tvMode: null, theatre: false, autoplay: true, advanceSecs: 0, continueClearedAt: null,
-    soundRemember: true, autoResume: true, backGuard: "ask",
+    soundRemember: true, autoResume: true, backGuard: "smart", swipeNav: "edges", reelsMode: false,
     igFullPost: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
   if (!prefs.igAdjust || !prefs.igAdjust.reel) prefs.igAdjust = { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } };
+  // v17: the old v16 default was "ask" for every platform. Move that default to
+  // Smart once; explicit user choices made after this migration are preserved.
+  if (prefs.backGuard === "ask" && prefs.smartBackMigrated !== 17) {
+    prefs.backGuard = "smart"; prefs.smartBackMigrated = 17;
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {}
+  }
   function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
 
   function looksLikeTV() {
@@ -1636,12 +1727,20 @@
     const items = continueItems();
     sec.hidden = items.length === 0;
     if (!items.length) { rail.innerHTML = ""; return; }
-    rail.innerHTML = items.map((item) => `
-      <article class="card" data-id="${item.id}" tabindex="0" role="button" aria-label="Resume ${esc(displayTitle(item))}">
+    rail.innerHTML = items.map((item) => {
+      const canResume = canResumePlatform(item.platform) && Number(item.watch_seconds) > 5;
+      const label = canResume ? "Resume" : "Reopen";
+      const detail = canResume
+        ? "Resume from " + fmtClock(item.watch_seconds)
+        : "Last watched · exact resume not supported";
+      return `
+      <article class="card" data-id="${item.id}" tabindex="0" role="button" aria-label="${label} ${esc(displayTitle(item))}">
         ${thumbHtml(item)}
         <div class="card-body"><h3 class="card-title">${esc(displayTitle(item))}</h3>
-        <div class="card-author">${esc(item.author || PLATFORM_LABEL[item.platform] || "")}</div></div>
-      </article>`).join("");
+        <div class="card-author">${esc(item.author || PLATFORM_LABEL[item.platform] || "")}</div>
+        <div class="continue-label ${canResume ? "resume" : "reopen"}">${esc(detail)}</div></div>
+      </article>`;
+    }).join("");
     rail.querySelectorAll(".card").forEach((card) => {
       card.addEventListener("click", () => openPlayer(card.dataset.id, true));
       card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPlayer(card.dataset.id, true); } });
@@ -1946,7 +2045,16 @@
       focusBigDefault();
     });
     const backGuardExitBtn = $("#backGuardExitBtn");
-    if (backGuardExitBtn) backGuardExitBtn.addEventListener("click", (e) => { e.stopPropagation(); closePlayer(); });
+    if (backGuardExitBtn) backGuardExitBtn.addEventListener("click", (e) => { e.stopPropagation(); closePlayer({ undo: true }); });
+    const undoBtn = $("#undoBtn");
+    if (undoBtn) undoBtn.addEventListener("click", (e) => {
+      e.stopPropagation(); const id = state.undoId; hideUndo();
+      if (id) openPlayer(id, true);
+    });
+    const fsSwipeNavSelect = $("#fsSwipeNavSelect");
+    if (fsSwipeNavSelect) fsSwipeNavSelect.addEventListener("change", (e) => { e.stopPropagation(); applySwipeNav(e.target.value); });
+    const fsReelsModeBtn = $("#fsReelsModeBtn");
+    if (fsReelsModeBtn) fsReelsModeBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleReelsMode(); });
     const advSel = $("#advanceSelect");
     if (advSel) advSel.addEventListener("change", (e) => applyAdvanceSecs(e.target.value));
     const fsAdvSel = $("#fsAdvanceSelect");
@@ -2021,6 +2129,28 @@
     if (shellEl) {
       shellEl.addEventListener("pointermove", () => { if (inFullscreen()) showFsControls(); });
       shellEl.addEventListener("pointerdown", () => { if (inFullscreen()) showFsControls(); });
+      // v17: vertical swipe navigation. Embedded iframes swallow touches, so the
+      // default listens on the shell/edge strips; "anywhere" adds a gesture layer.
+      shellEl.addEventListener("touchstart", (e) => {
+        if ($("#playerModal").hidden || state.playerView !== "big" || prefs.swipeNav === "off") return;
+        if (state.moreOpen || state.backGuardOpen) return;
+        const t = e.touches[0]; if (!t) return;
+        const rect = shellEl.getBoundingClientRect();
+        const x = t.clientX - rect.left, y = t.clientY - rect.top;
+        const edge = x < 44 || x > rect.width - 44 || y < 80 || y > rect.height - 110;
+        const targetOk = prefs.swipeNav === "anywhere" ||
+          (e.target && e.target.closest && e.target.closest(".fs-hit, .fs-bar, .player-top, .fs-exit, .sound-helper, .swipe-layer"));
+        if (prefs.swipeNav === "edges" && !edge && !targetOk) return;
+        state.swipeTouch = { x: t.clientX, y: t.clientY, t: Date.now() };
+      }, { passive: true });
+      shellEl.addEventListener("touchend", (e) => {
+        const s = state.swipeTouch; state.swipeTouch = null;
+        if (!s) return;
+        const t = e.changedTouches[0]; if (!t) return;
+        const dy = t.clientY - s.y, dx = t.clientX - s.x;
+        if (Date.now() - s.t > 900) return;
+        if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.4) swipeStep(dy < 0 ? 1 : -1);
+      }, { passive: true });
     }
     window.addEventListener("blur", () => { if (inFullscreen()) showFsControls(); });
 

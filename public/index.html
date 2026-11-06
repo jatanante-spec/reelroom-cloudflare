@@ -149,6 +149,10 @@
       </div>
     </div>
     <div class="player-stage" id="playerStage"></div>
+    <!-- v17: optional gesture layer for "swipe anywhere". Hidden by default so
+         normal embed controls keep working; edge/controls swipe works without it. -->
+    <div class="swipe-layer" id="swipeLayer" hidden aria-hidden="true"></div>
+    <div class="swipe-hint" id="swipeHint" aria-hidden="true">Next video</div>
     <!-- v15: obvious sound helper. Sits above the video, never inside the embed. -->
     <button class="sound-helper" id="soundHelperBtn" type="button" hidden aria-pressed="false">
       <span id="soundHelperIcon" aria-hidden="true">🔇</span><span id="soundHelperText">Tap for sound</span>
@@ -224,10 +228,23 @@
       <div class="fs-more-row">
         <label for="fsBackGuardSelect">Back button</label>
         <select id="fsBackGuardSelect" aria-label="What the phone Back button does while watching">
+          <option value="smart">Smart</option>
           <option value="ask">Ask first</option>
           <option value="double">Press twice</option>
           <option value="off">Exit immediately</option>
         </select>
+      </div>
+      <div class="fs-more-row">
+        <label for="fsSwipeNavSelect">Swipe up/down</label>
+        <select id="fsSwipeNavSelect" aria-label="Vertical swipe navigation for next and previous video">
+          <option value="edges">Edges / controls</option>
+          <option value="anywhere">Anywhere</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <div class="fs-more-row">
+        <span>Reels mode</span>
+        <button class="fs-btn" id="fsReelsModeBtn" aria-pressed="false">Off</button>
       </div>
       <div class="fs-more-row">
         <label for="fsAdvanceSelect">Advance after</label>
@@ -277,6 +294,12 @@
       <div class="upnext-list" id="upnextList"></div>
     </div>
   </div>
+</div>
+
+<!-- v17: Undo after a Back exit, especially for platforms that cannot resume. -->
+<div class="undo-bar" id="undoBar" hidden role="status">
+  <span id="undoText">Video closed.</span>
+  <button class="undo-btn" id="undoBtn" type="button">Undo</button>
 </div>
 
 <!-- Add modal -->

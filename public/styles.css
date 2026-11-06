@@ -807,3 +807,43 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
 .back-guard .fs-btn:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
 .player-shell.guard-open .sound-helper,
 .player-shell.guard-open .sound-hint { display: none !important; }
+
+/* ==========================================================================
+   v17 — Smart Back, Undo, swipe navigation, honest Continue watching
+   ========================================================================== */
+
+.swipe-layer {
+  position: absolute; inset: 0; z-index: 4;
+  background: transparent; touch-action: none;
+}
+.swipe-layer[hidden] { display: none; }
+.swipe-hint {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 11; padding: 10px 16px; border-radius: 999px;
+  background: rgba(10, 12, 18, .9); border: 1px solid rgba(255,255,255,.22);
+  color: #fff; font-size: 13px; font-weight: 700;
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
+}
+.swipe-hint.show { opacity: 1; }
+.player-shell.guard-open .swipe-hint,
+.player-shell.more-open .swipe-hint { display: none; }
+
+.undo-bar {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%); z-index: 1200;
+  display: flex; align-items: center; gap: 12px;
+  width: min(560px, calc(100% - 24px));
+  background: rgba(16, 19, 27, .98); border: 1px solid #2a3044;
+  border-radius: 14px; padding: 11px 14px; box-shadow: 0 16px 44px rgba(0,0,0,.45);
+}
+.undo-bar[hidden] { display: none; }
+.undo-bar span { flex: 1; color: #dbe1ee; font-size: 13px; line-height: 1.4; }
+.undo-btn {
+  border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  background: linear-gradient(135deg, #ff4d4d, #ff7a59); color: #fff; font-weight: 800;
+}
+.undo-btn:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+
+.continue-label { margin-top: 5px; font-size: 11.5px; font-weight: 600; }
+.continue-label.resume { color: #2dd4a7; }
+.continue-label.reopen { color: #ffb020; }
