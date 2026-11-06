@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v19";
+  const REELROOM_VERSION = "v20";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -29,6 +29,7 @@
     undoTimer: null,
     swipeTouch: null,
     navAutoplayAt: 0,
+    autoplayNudgeTimers: [],
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -751,7 +752,7 @@
   // makes that state obvious, offers one-tap unmute where the platform allows it,
   // and remembers the choice for this browser session.
   const SOUND_SESSION_KEY = "reelroom.sound.session.v1";
-  const sound = { status: "muted", fallback: false, platform: "", sessionOn: false, confirmTimer: null };
+  const sound = { status: "muted", fallback: false, platform: "", sessionOn: false, confirmTimer: null, seq: 0 };
   function loadSoundSession() { try { return sessionStorage.getItem(SOUND_SESSION_KEY) === "on"; } catch { return false; } }
   function saveSoundSession(on) { try { if (on) sessionStorage.setItem(SOUND_SESSION_KEY, "on"); else sessionStorage.removeItem(SOUND_SESSION_KEY); } catch {} }
   sound.sessionOn = loadSoundSession();
@@ -803,20 +804,27 @@
     if (on) rememberSound();
     updateSoundUI();
   }
-  function initSoundFor(platform) {
+  function initSoundFor(platform, opts = {}) {
     clearTimeout(sound.confirmTimer);
+    const seq = ++sound.seq;
     sound.platform = platform || "";
     sound.fallback = false;
+    // v20: swipe/Next/Prev must not auto-restore sound. Unmuting a freshly
+    // swapped embed can make the browser pause it, which looked like "next
+    // video does not play". Start muted; the user can tap Enable sound.
+    const mutedStart = !!opts.mutedStart || shouldStartMuted(platform);
     if (platform === "instagram") sound.status = "unknown";
-    else sound.status = shouldStartMuted(platform) ? "muted" : "trying";
+    else sound.status = mutedStart ? "muted" : "trying";
     updateSoundUI();
-    if (!shouldStartMuted(platform) && canHostUnmute(platform)) {
-      setTimeout(() => { if (state.activePlatform === platform) sendUnmute(platform); }, 900);
+    if (!mutedStart && canHostUnmute(platform)) {
+      setTimeout(() => { if (sound.seq === seq && state.activePlatform === platform) sendUnmute(platform); }, 900);
     }
   }
   function requestSound() {
     const platform = state.activePlatform || sound.platform;
     if (!platform) return;
+    clearAutoplayNudges();
+    state.navAutoplayAt = 0;
     showFsControls();
     if (canHostUnmute(platform)) {
       sound.status = "trying"; sound.fallback = false;
@@ -919,6 +927,7 @@
         ? "Your place will be saved at " + fmtClock(pos) + ". You can resume from Continue watching."
         : "This platform cannot resume the exact place. ReelRoom will remember the video, and you can Undo if this was accidental.";
     }
+    clearAutoplayNudges();
     if (state.activePlatform === "youtube") ytCommand("pauseVideo");
     else if (state.activePlatform === "tiktok") tiktokCommand("pause");
     const b = $("#backGuardContinueBtn"); if (b) b.focus();
@@ -1139,7 +1148,8 @@
     // playback reporting + continue-watching tracking
     resetBridge(active.platform);
     state.activePlatform = active.platform;
-    initSoundFor(active.platform);
+    initSoundFor(active.platform, { mutedStart: navBoost });
+    if (navBoost) scheduleAutoplayNudges(active.platform);
     const rp = resumePosition(item, active.platform);
     state.pendingTikTokSeek = active.platform === "tiktok" ? rp : 0;
     if (rp > 0) {
@@ -1208,6 +1218,7 @@
     const item = currentList()[state.playerIndex];
     cancelCountdown();
     stopTracking();
+    clearAutoplayNudges();
     clearTimeout(state.reportWatchdog);
     if (item) saveProgress(item, true, { keepalive: true }).then(() => renderContinue());
     if (opts.undo && item) showUndo(item); else hideUndo();
@@ -1586,11 +1597,34 @@
     if (n >= 0 && n < cards.length) { cards[n].focus(); cards[n].scrollIntoView({ block: "nearest", inline: "nearest" }); }
   }
 
+  // ---- v20: autoplay nudges after swipe/Next/Prev ----
+  function clearAutoplayNudges() {
+    (state.autoplayNudgeTimers || []).forEach(clearTimeout);
+    state.autoplayNudgeTimers = [];
+  }
+  function scheduleAutoplayNudges(platform) {
+    clearAutoplayNudges();
+    if (platform !== "youtube" && platform !== "tiktok") return;
+    const token = state.navAutoplayAt;
+    const attempt = () => {
+      if ($("#playerModal").hidden || state.activePlatform !== platform) return;
+      if (state.backGuardOpen) return;
+      // If it is already playing, or has clearly advanced, stop nudging.
+      if (bridge.playerState === 1 || bridge.currentTime > 0.75) { clearAutoplayNudges(); return; }
+      if (platform === "youtube") { ytCommand("mute"); ytCommand("playVideo"); }
+      else { tiktokCommand("mute"); tiktokCommand("play"); }
+    };
+    [350, 950, 1800, 3000, 4500].forEach((ms) => {
+      const t = setTimeout(() => { if (state.navAutoplayAt === token) attempt(); }, ms);
+      state.autoplayNudgeTimers.push(t);
+    });
+  }
+
   // ---- playback bridge: YouTube + TikTok report position and ending ----
-  const bridge = { win: null, platform: "", currentTime: 0, duration: 0, ended: false, openSeconds: 0 };
+  const bridge = { win: null, platform: "", currentTime: 0, duration: 0, ended: false, openSeconds: 0, playerState: -1 };
   function resetBridge(platform) {
     bridge.win = null; bridge.platform = platform || "";
-    bridge.currentTime = 0; bridge.duration = 0; bridge.ended = false; bridge.openSeconds = 0;
+    bridge.currentTime = 0; bridge.duration = 0; bridge.ended = false; bridge.openSeconds = 0; bridge.playerState = -1;
   }
   function ytHandshake(iframe) {
     if (!iframe || !iframe.contentWindow) return;
@@ -1617,7 +1651,11 @@
       if (typeof info.muted === "boolean") setSoundConfirmed(!info.muted);
       else if (typeof info.volume === "number") setSoundConfirmed(info.volume > 0);
       const st = data.event === "onStateChange" ? data.info : info.playerState;
-      if (st === 0) handleEnded();
+      if (typeof st === "number") {
+        bridge.playerState = st;
+        if (st === 1) clearAutoplayNudges();
+        if (st === 0) handleEnded();
+      }
       return;
     }
     if (bridge.platform === "tiktok" && /tiktok\.com$/.test(origin.replace(/^https?:\/\//, ""))) {
@@ -1640,7 +1678,12 @@
           setTimeout(() => { if (state.activePlatform === "tiktok") tiktokCommand("play"); }, 1200);
         }
       }
-      if (d.type === "onStateChange" && Number(d.value) === 0) handleEnded();
+      if (d.type === "onStateChange") {
+        const st = Number(d.value);
+        bridge.playerState = st;
+        if (st === 1) clearAutoplayNudges();
+        if (st === 0) handleEnded();
+      }
     }
   }
   function reportsProgress(platform) { return platform === "youtube" || platform === "tiktok"; }
