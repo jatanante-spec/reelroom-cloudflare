@@ -813,22 +813,17 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
    ========================================================================== */
 
 /* v18: Anywhere swipe must not block the embed's centre Play button.
-   The layer itself is click-through; only the four surrounding zones capture
-   gestures. The empty centre cell is a real tap-through hole. */
+   v22: the zones are positioned from the real video box so the player's own
+   control bar (speaker / pause / seek) is ALSO a tap-through hole. The layer
+   itself is click-through; only the zone rects capture gestures. */
 .swipe-layer {
   --swipe-hole: 132px;
   position: absolute; inset: 0; z-index: 4;
-  display: grid; pointer-events: none;
-  grid-template-columns: 1fr var(--swipe-hole) 1fr;
-  grid-template-rows: 1fr var(--swipe-hole) 1fr;
+  pointer-events: none;
   background: transparent;
 }
 .swipe-layer[hidden] { display: none; }
-.swipe-zone { pointer-events: auto; touch-action: none; background: transparent; }
-.swipe-zone-top { grid-area: 1 / 1 / 2 / 4; }
-.swipe-zone-left { grid-area: 2 / 1 / 3 / 2; }
-.swipe-zone-right { grid-area: 2 / 3 / 3 / 4; }
-.swipe-zone-bottom { grid-area: 3 / 1 / 4 / 4; }
+.swipe-zone { position: absolute; pointer-events: auto; touch-action: none; background: transparent; }
 @media (max-width: 360px) {
   .swipe-layer { --swipe-hole: 108px; }
 }

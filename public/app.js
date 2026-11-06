@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v21";
+  const REELROOM_VERSION = "v22";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -610,6 +610,7 @@
         const it = currentList()[state.playerIndex];
         if (it && state.fbAutoFit) fitFacebook(it);
         if (state.igActive) layoutInstagram();
+        layoutSwipeZones();
       });
     });
     stageRO.observe(stage);
@@ -1026,6 +1027,44 @@
     const on = prefs.swipeNav === "anywhere" && !$("#playerModal").hidden &&
       state.playerView === "big" && !state.moreOpen && !state.backGuardOpen && (!crop || crop.hidden);
     layer.hidden = !on;
+    if (on) layoutSwipeZones();
+  }
+  // v22: keep the embedded player's own control bar tappable in Anywhere mode.
+  // We measure the real video box and leave two tap-through holes: the centre
+  // Play button and the strip along the video's bottom edge (speaker/pause/seek).
+  function swipeControlBarHeight() {
+    if (state.fbNativeVideo) return 56;
+    const p = state.activePlatform;
+    if (p === "facebook") return 64;
+    if (p === "instagram") return 0;
+    return 48;
+  }
+  function layoutSwipeZones() {
+    const layer = $("#swipeLayer"); if (!layer || layer.hidden) return;
+    const shell = $("#playerShell"); if (!shell) return;
+    const W = shell.clientWidth, H = shell.clientHeight;
+    if (!W || !H) return;
+    const sr = shell.getBoundingClientRect();
+    const box = document.getElementById("stageBox") || document.getElementById("igWindow");
+    let V = { left: 0, top: 0, width: W, height: H, bottom: H };
+    if (box) {
+      const r = box.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) V = { left: r.left - sr.left, top: r.top - sr.top, width: r.width, height: r.height, bottom: r.bottom - sr.top };
+    }
+    const hole = parseFloat(getComputedStyle(layer).getPropertyValue("--swipe-hole")) || 132;
+    const cx = V.left + V.width / 2, cy = V.top + V.height / 2;
+    const holeTop = Math.max(0, cy - hole / 2), holeBottom = Math.min(H, cy + hole / 2);
+    const controlTop = Math.max(holeBottom, V.bottom - swipeControlBarHeight());
+    const set = (sel, x, y, w, h) => {
+      const el = layer.querySelector(sel); if (!el) return;
+      el.style.left = Math.max(0, x) + "px"; el.style.top = Math.max(0, y) + "px";
+      el.style.width = Math.max(0, w) + "px"; el.style.height = Math.max(0, h) + "px";
+    };
+    set(".swipe-zone-top", 0, 0, W, holeTop);
+    set(".swipe-zone-left", 0, holeTop, Math.max(0, cx - hole / 2), holeBottom - holeTop);
+    set(".swipe-zone-right", cx + hole / 2, holeTop, Math.max(0, W - (cx + hole / 2)), holeBottom - holeTop);
+    set(".swipe-zone-bottom", 0, holeBottom, W, Math.max(0, controlTop - holeBottom));
+    set(".swipe-zone-letter", 0, Math.min(H, V.bottom), W, Math.max(0, H - V.bottom));
   }
   function flashSwipeHint(text) {
     const hint = $("#swipeHint"); if (!hint) return;
@@ -1154,6 +1193,7 @@
     lastFitKey = "";
     if (state.fbAutoFit) sizeFacebookStage(item);
     observeStage();
+    layoutSwipeZones();
     syncFsChrome();
 
     // playback reporting + continue-watching tracking
@@ -1688,6 +1728,7 @@
         aspectCache.set(item.id, video.videoWidth / video.videoHeight);
         lastFitKey = "";
         fitFacebook(item);
+        layoutSwipeZones();
       }
     });
     video.addEventListener("timeupdate", sync);
@@ -2308,7 +2349,7 @@
     on("#caDown", () => nudgeInstagram("dy", 1));
     on("#caReset", () => { nudgeInstagram("reset", 0); toast("Picture adjustment reset"); });
 
-    document.addEventListener("fullscreenchange", () => { updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60); });
+    document.addEventListener("fullscreenchange", () => { updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60); setTimeout(layoutSwipeZones, 80); });
 
     // reveal the fullscreen controls on movement / tap, and when the video steals focus
     const shellEl = $("#playerShell");
