@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v18";
+  const REELROOM_VERSION = "v19";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -28,6 +28,7 @@
     undoId: null,
     undoTimer: null,
     swipeTouch: null,
+    navAutoplayAt: 0,
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -764,12 +765,15 @@
     if (!soundRememberOn()) return;
     sound.sessionOn = true; saveSoundSession(true);
   }
-  function applySoundParams(platform, url) {
+  function applySoundParams(platform, url, forceMuted) {
     if (!url) return url;
     try {
       const u = new URL(url);
       const host = u.hostname.replace(/^www\./, "");
-      const muted = shouldStartMuted(platform);
+      // v19: after swipe/Next/Prev, start muted even if sound is remembered on.
+      // Muted autoplay is the reliable path; sound is restored afterwards where
+      // the platform allows it.
+      const muted = !!forceMuted || shouldStartMuted(platform);
       if (/youtube(-nocookie)?\.com$/.test(host)) u.searchParams.set("mute", muted ? "1" : "0");
       else if (host === "tiktok.com" && u.pathname.indexOf("/player/") === 0) u.searchParams.set("muted", muted ? "1" : "0");
       else if (host === "facebook.com" && u.pathname.indexOf("/plugins/video.php") === 0) u.searchParams.set("mute", muted ? "1" : "0");
@@ -1031,16 +1035,25 @@
 
   function embedWithApi(platform, item, url) {
     if (!url) return url;
+    const navBoost = Date.now() - (state.navAutoplayAt || 0) < 2500;
     try {
       const u = new URL(url);
-      if (/youtube(-nocookie)?\.com$/.test(u.hostname)) {
+      const host = u.hostname.replace(/^www\./, "");
+      if (/youtube(-nocookie)?\.com$/.test(host)) {
+        u.searchParams.set("autoplay", "1");
+        u.searchParams.set("playsinline", "1");
+        u.searchParams.set("rel", "0");
         u.searchParams.set("enablejsapi", "1");
         if (/^https?:/.test(location.origin)) u.searchParams.set("origin", location.origin);
         const pos = resumePosition(item, "youtube");
         if (pos > 0) u.searchParams.set("start", String(pos));
+      } else if (host === "tiktok.com" && u.pathname.indexOf("/player/") === 0) {
+        u.searchParams.set("autoplay", "1");
+      } else if (host === "facebook.com" && u.pathname.indexOf("/plugins/video.php") === 0) {
+        u.searchParams.set("autoplay", "true");
       }
-      return applySoundParams(platform, u.href);
-    } catch { return applySoundParams(platform, url); }
+      return applySoundParams(platform, u.href, navBoost);
+    } catch { return applySoundParams(platform, url, navBoost); }
   }
 
   async function markOpened(item) {
@@ -1106,8 +1119,9 @@
     cancelCountdown();
     const cls = stageClass(active, embed);
     const embedSrc = embedWithApi(active.platform, item, embed);
+    const navBoost = Date.now() - (state.navAutoplayAt || 0) < 2500;
     state.igActive = active.platform === "instagram" && !!embedSrc;
-    const frameHtml = `<iframe src="${esc(embedSrc)}" title="${esc(item.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    const frameHtml = `<iframe src="${esc(embedSrc)}" title="${esc(item.title)}" allow="accelerometer; autoplay *; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
     stage.innerHTML = embedSrc
       ? (state.igActive
           ? `<div class="${cls} ig-window" id="igWindow">${frameHtml}</div>`
@@ -1141,6 +1155,12 @@
         ytHandshake(frame);
         setTimeout(() => ytHandshake(frame), 900);
         setTimeout(() => ytHandshake(frame), 2600);
+        if (navBoost) {
+          // Best-effort play kick after swipe/Next/Prev. The URL already asks for
+          // muted autoplay; this helps players that load paused.
+          setTimeout(() => { if (!$("#playerModal").hidden && state.activePlatform === "youtube") ytCommand("playVideo"); }, 700);
+          setTimeout(() => { if (!$("#playerModal").hidden && state.activePlatform === "youtube") ytCommand("playVideo"); }, 1800);
+        }
       });
     }
     startTracking(item);
@@ -1230,6 +1250,8 @@
     state.playerIndex = next;
     state.fbUseAlt = false;
     state.useBackup = null;
+    // v19: navigation by swipe/Next/Prev should start the next embed automatically.
+    state.navAutoplayAt = Date.now();
     renderPlayer(list[next]);
   }
 
@@ -1585,7 +1607,10 @@
       let data = ev.data;
       if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
       if (!data || typeof data !== "object") return;
-      if (data.event === "onReady") ytHandshake(iframe);
+      if (data.event === "onReady") {
+        ytHandshake(iframe);
+        if (Date.now() - (state.navAutoplayAt || 0) < 4000) setTimeout(() => ytCommand("playVideo"), 250);
+      }
       const info = data.info || {};
       if (typeof info.currentTime === "number") bridge.currentTime = info.currentTime;
       if (typeof info.duration === "number" && info.duration > 0) bridge.duration = info.duration;
@@ -1603,11 +1628,17 @@
         if (typeof d.value.duration === "number" && d.value.duration > 0) bridge.duration = d.value.duration;
       }
       if (d.type === "onMute") setSoundConfirmed(d.value === false);
-      if (d.type === "onPlayerReady" && state.pendingTikTokSeek > 0) {
-        const s = state.pendingTikTokSeek; state.pendingTikTokSeek = 0;
-        // TikTok builds its player lazily; retry once shortly after ready.
-        setTimeout(() => tiktokCommand("seekTo", s), 300);
-        setTimeout(() => tiktokCommand("seekTo", s), 1500);
+      if (d.type === "onPlayerReady") {
+        if (state.pendingTikTokSeek > 0) {
+          const s = state.pendingTikTokSeek; state.pendingTikTokSeek = 0;
+          // TikTok builds its player lazily; retry once shortly after ready.
+          setTimeout(() => tiktokCommand("seekTo", s), 300);
+          setTimeout(() => tiktokCommand("seekTo", s), 1500);
+        }
+        if (Date.now() - (state.navAutoplayAt || 0) < 4000) {
+          setTimeout(() => { if (state.activePlatform === "tiktok") tiktokCommand("play"); }, 250);
+          setTimeout(() => { if (state.activePlatform === "tiktok") tiktokCommand("play"); }, 1200);
+        }
       }
       if (d.type === "onStateChange" && Number(d.value) === 0) handleEnded();
     }
