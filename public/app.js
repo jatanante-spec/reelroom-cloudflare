@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v26";
+  const REELROOM_VERSION = "v27";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -1604,12 +1604,16 @@
   function renderOrg() {
     const colWrap = $("#orgColChips"), tagWrap = $("#orgTagChips");
     if (colWrap) {
-      colWrap.innerHTML = allCollections().map((c) => `<button class="org-pick ${state.orgCol === c ? "on" : ""}" data-col="${esc(c)}">📁 ${esc(c)}</button>`).join("") +
+      // v27: include the draft collection so a newly created name shows as a selected chip.
+      const cols = [...new Set([...allCollections(), ...(state.orgCol ? [state.orgCol] : [])])].sort();
+      colWrap.innerHTML = cols.map((c) => `<button class="org-pick ${state.orgCol === c ? "on" : ""}" data-col="${esc(c)}">📁 ${esc(c)}</button>`).join("") +
         `<button class="org-pick ${state.orgCol === "" ? "on" : ""}" data-col="">None</button>`;
       colWrap.querySelectorAll("[data-col]").forEach((b) => b.addEventListener("click", () => { state.orgCol = b.dataset.col; renderOrg(); }));
     }
     if (tagWrap) {
-      tagWrap.innerHTML = allTags().map((t) => `<button class="org-pick ${state.orgTags.has(t) ? "on" : ""}" data-tag="${esc(t)}">#${esc(t)}</button>`).join("");
+      // v27: include draft tags so newly added tags show as selected chips.
+      const tags = [...new Set([...allTags(), ...state.orgTags])].sort();
+      tagWrap.innerHTML = tags.map((t) => `<button class="org-pick ${state.orgTags.has(t) ? "on" : ""}" data-tag="${esc(t)}">#${esc(t)}</button>`).join("");
       tagWrap.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
         const t = b.dataset.tag;
         if (state.orgTags.has(t)) state.orgTags.delete(t); else state.orgTags.add(t);
@@ -2531,16 +2535,20 @@
     const bulkOrg = $("#bulkOrganizeBtn"); if (bulkOrg) bulkOrg.addEventListener("click", () => { if (state.selected.size) openOrg([...state.selected]); });
     const bulkFavBtn = $("#bulkFavBtn"); if (bulkFavBtn) bulkFavBtn.addEventListener("click", bulkFav);
     const orgSave = $("#orgSaveBtn"); if (orgSave) orgSave.addEventListener("click", saveOrg);
-    const orgAddCol = $("#orgAddColBtn");
-    if (orgAddCol) orgAddCol.addEventListener("click", () => {
-      const inp = $("#orgNewCol"); const v = inp.value.trim(); if (!v) return;
+    const createCol = () => {
+      const inp = $("#orgNewCol"); const v = inp.value.trim(); if (!v) { toast("Type a collection name first"); return; }
       state.orgCol = v; inp.value = ""; renderOrg();
-    });
-    const orgAddTag = $("#orgAddTagBtn");
-    if (orgAddTag) orgAddTag.addEventListener("click", () => {
-      const inp = $("#orgNewTag"); const v = inp.value.trim().replace(/^#/, ""); if (!v) return;
+      toast(`Collection “${v}” selected — tap Save`);
+    };
+    const createTag = () => {
+      const inp = $("#orgNewTag"); const v = inp.value.trim().replace(/^#/, ""); if (!v) { toast("Type a tag first"); return; }
       state.orgTags.add(v); inp.value = ""; renderOrg();
-    });
+      toast(`Tag #${v} added — tap Save`);
+    };
+    const orgAddCol = $("#orgAddColBtn"); if (orgAddCol) orgAddCol.addEventListener("click", createCol);
+    const orgAddTag = $("#orgAddTagBtn"); if (orgAddTag) orgAddTag.addEventListener("click", createTag);
+    const orgNewCol = $("#orgNewCol"); if (orgNewCol) orgNewCol.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createCol(); } });
+    const orgNewTag = $("#orgNewTag"); if (orgNewTag) orgNewTag.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createTag(); } });
     const edgeHandle = $("#edgeHandle"); if (edgeHandle) edgeHandle.addEventListener("click", () => setSidebar(true));
     // swipe in from the left edge opens the sidebar (player closed, no modal)
     let edgeX = null, edgeY = null;
