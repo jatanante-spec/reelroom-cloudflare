@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v28";
+  const REELROOM_VERSION = "v29";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -2362,6 +2362,9 @@
   }
   function buildRail() {
     const rail = $("#jumpRail"); if (!rail) return;
+    // v29: only show the rail (and reserve its column) when there is somewhere to jump.
+    document.body.classList.toggle("has-rail", state.groups.length > 1);
+    if (state.groups.length < 2) { rail.innerHTML = ""; return; }
     rail.innerHTML = state.groups.map((g, i) => `<button class="tick" data-idx="${i}" title="${esc(g.label)}">${esc(g.short)}</button>`).join("") + `<div class="rail-thumb" id="railThumb"></div>`;
     rail.querySelectorAll(".tick").forEach((t) => t.addEventListener("click", (e) => { e.stopPropagation(); jumpToGroup(Number(t.dataset.idx)); }));
     updateRail();
