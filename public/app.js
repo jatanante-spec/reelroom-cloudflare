@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v22";
+  const REELROOM_VERSION = "v23";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -33,6 +33,8 @@
     fbNativeVideo: null,
     fbStreamSeq: 0,
     fbStreamFailed: new Set(),
+    lastAddedId: null,
+    lastAddedTimer: null,
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -64,12 +66,21 @@
     return data;
   }
   let toastTimer;
-  function toast(msg) {
+  function hideToast() { const el = $("#toast"); if (el) el.hidden = true; }
+  function toast(msg, action) {
     const el = $("#toast");
-    el.textContent = msg;
+    const txt = $("#toastText");
+    const btn = $("#toastAction");
+    if (txt) txt.textContent = msg; else el.textContent = msg;
+    if (btn) {
+      if (action) {
+        btn.hidden = false; btn.textContent = action.label;
+        btn.onclick = () => { hideToast(); try { action.fn(); } catch {} };
+      } else { btn.hidden = true; btn.onclick = null; }
+    }
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+    toastTimer = setTimeout(hideToast, action ? 5200 : 3200);
   }
   function debounce(fn, ms) {
     let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -177,6 +188,7 @@
     renderGrid(list);
     renderContinue();
     $("#resultCount").textContent = `${list.length} of ${state.items.length} link${state.items.length === 1 ? "" : "s"}`;
+    updateScrollUI();
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
     $("#emptyState").hidden = list.length > 0;
     $("#grid").hidden = list.length === 0;
@@ -276,7 +288,7 @@
   function renderGrid(list) {
     const grid = $("#grid");
     grid.innerHTML = list.map((item) => `
-      <article class="card" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
+      <article class="card ${state.lastAddedId === item.id ? "just-added" : ""}" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
         ${thumbHtml(item)}
         <div class="card-body">
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
@@ -1381,9 +1393,36 @@
     return null;
   }
 
+  // v23: highlight + scroll to a newly added card so it is easy to find.
+  function highlightAdded(id) {
+    state.lastAddedId = id;
+    clearTimeout(state.lastAddedTimer);
+    state.lastAddedTimer = setTimeout(() => {
+      state.lastAddedId = null;
+      const c = document.querySelector(`.card[data-id="${id}"]`);
+      if (c) c.classList.remove("just-added");
+    }, 2600);
+  }
+  function scrollToCard(id) {
+    requestAnimationFrame(() => {
+      const c = document.querySelector(`.card[data-id="${id}"]`);
+      if (c) c.scrollIntoView({ behavior: "smooth", block: "center" });
+      else scrollToTop();
+    });
+  }
+  async function undoAdd(item) {
+    try {
+      await api(`/api/items/${item.id}`, { method: "DELETE" });
+      state.items = state.items.filter((i) => i.id !== item.id);
+      render();
+      toast("Removed");
+    } catch (e) { toast(e.message); }
+  }
   async function addSingle() {
     const url = $("#singleUrl").value.trim();
     if (!url) { toast("Paste a link first"); return; }
+    const btn = $("#singleAddBtn");
+    btn.disabled = true; btn.textContent = "Adding…";
     try {
       const data = await api("/api/items", {
         method: "POST",
@@ -1395,17 +1434,32 @@
           notes: $("#singleNotes").value.trim() || undefined,
         },
       });
+      const keep = $("#keepOpenAdd") && $("#keepOpenAdd").checked;
       if (data.duplicate) {
         toast("Already in your library");
+        if (!keep) $("#addModal").hidden = true;
+        render();
+        highlightAdded(data.item.id);
+        scrollToCard(data.item.id);
       } else {
         state.items.unshift(data.item);
-        toast("Added to library");
+        render();
+        schedulePoll();
+        highlightAdded(data.item.id);
+        if (!keep) { $("#addModal").hidden = true; scrollToCard(data.item.id); }
+        toast("Added to library", { label: "Undo", fn: () => undoAdd(data.item) });
       }
-      $("#singleUrl").value = ""; $("#singleTitle").value = ""; $("#singleTags").value = ""; $("#singleNotes").value = "";
+      $("#singleUrl").value = ""; $("#singleTitle").value = ""; $("#singleNotes").value = "";
       $("#detectedPlatform").textContent = "";
-      render();
-      schedulePoll();
+      if (!keep) {
+        $("#singleCollection").value = ""; $("#singleTags").value = "";
+        const d = $("#addDetails"); if (d) d.open = false;
+        const ab = $("#addBtn"); if (ab) ab.focus();
+      } else {
+        $("#singleUrl").focus();
+      }
     } catch (e) { toast(e.message); }
+    finally { btn.disabled = false; btn.textContent = "Add to library"; }
   }
 
   async function addBulk() {
@@ -1421,6 +1475,7 @@
       const lines = [`Added: ${data.added.length}`, `Duplicates skipped: ${data.duplicates.length}`];
       if (data.errors.length) lines.push(`Errors: ${data.errors.length}`, ...data.errors.slice(0, 8).map((e) => `• ${e.url} — ${e.error}`));
       $("#bulkResult").textContent = lines.join("\n");
+      const ba = $("#bulkActions"); if (ba) ba.hidden = false;
       toast(`Added ${data.added.length} link${data.added.length === 1 ? "" : "s"}`);
       $("#bulkUrls").value = "";
       await loadItems();
@@ -2121,6 +2176,20 @@
     e.preventDefault(); list[i].focus();
   }
 
+  // ---- v23: back to top + scroll progress ----
+  function scrollToTop() {
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); }
+    catch { window.scrollTo(0, 0); }
+  }
+  function updateScrollUI() {
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    const playerOpen = !$("#playerModal").hidden;
+    const head = $("#headTopBtn"); if (head) head.hidden = playerOpen || y <= 80;
+    const fab = $("#toTopBtn"); if (fab) fab.hidden = playerOpen || y <= window.innerHeight * 0.9;
+    const p = $("#scrollProgress"); if (p) p.style.width = (Math.min(1, y / max) * 100) + "%";
+  }
+
   function applyAutoplayToggle() {
     prefs.autoplay = !prefs.autoplay; savePrefs();
     if (!prefs.autoplay) cancelCountdown();
@@ -2167,7 +2236,14 @@
         if (dx < -60) closeSidebar(); // swipe left to dismiss
       }, { passive: true });
     }
-    $("#brandLink").addEventListener("click", (e) => { e.preventDefault(); state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); });
+    let lastBrandTap = 0;
+    $("#brandLink").addEventListener("click", (e) => {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastBrandTap < 350) scrollToTop();
+      lastBrandTap = now;
+      state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar();
+    });
 
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
     $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
@@ -2202,6 +2278,24 @@
     });
     $("#singleAddBtn").addEventListener("click", addSingle);
     $("#bulkAddBtn").addEventListener("click", addBulk);
+    const bulkDone = $("#bulkDoneBtn");
+    if (bulkDone) bulkDone.addEventListener("click", () => {
+      $("#addModal").hidden = true;
+      const ba = $("#bulkActions"); if (ba) ba.hidden = true;
+      $("#bulkResult").textContent = "";
+      scrollToTop();
+      const ab = $("#addBtn"); if (ab) ab.focus();
+    });
+    const bulkMore = $("#bulkMoreBtn");
+    if (bulkMore) bulkMore.addEventListener("click", () => {
+      const ba = $("#bulkActions"); if (ba) ba.hidden = true;
+      $("#bulkResult").textContent = "";
+      $("#bulkUrls").focus();
+    });
+    const toTop = $("#toTopBtn"); if (toTop) toTop.addEventListener("click", scrollToTop);
+    const headTop = $("#headTopBtn"); if (headTop) headTop.addEventListener("click", scrollToTop);
+    window.addEventListener("scroll", updateScrollUI, { passive: true });
+    window.addEventListener("resize", updateScrollUI);
 
     stampVersion();
     ensurePlayerActionButtons();
@@ -2425,6 +2519,7 @@
       }
       if (typing) return;
       if (sidebarOpen() && e.key === "Backspace") { e.preventDefault(); closeSidebar(); return; }
+      if (e.key === "Home" && $("#playerModal").hidden && !sidebarOpen()) { e.preventDefault(); scrollToTop(); return; }
       if (inFullscreen()) showFsControls();
       if (e.key === "/") { e.preventDefault(); closeSidebar(); $("#searchInput").focus(); return; }
       if (!$("#playerModal").hidden) {

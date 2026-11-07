@@ -19,6 +19,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
+<div id="scrollProgress" aria-hidden="true"></div>
 <header class="topbar">
   <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle sidebar" aria-controls="sidebar" aria-expanded="false">☰</button>
   <a class="brand" href="#" id="brandLink">
@@ -29,6 +30,7 @@
     <input type="search" id="searchInput" placeholder="Search titles, creators, tags…  ( / )" autocomplete="off">
   </div>
   <div class="topbar-actions">
+    <button class="icon-btn" id="headTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
     <button class="icon-btn" id="tvModeBtn" title="TV / remote mode" aria-pressed="false">📺</button>
     <button class="btn btn-primary" id="addBtn">+ Add links</button>
     <div class="menu-wrap">
@@ -325,12 +327,18 @@
         <input type="url" id="singleUrl" placeholder="https://www.youtube.com/watch?v=… or TikTok / Instagram / Facebook link">
       </label>
       <div class="detected" id="detectedPlatform"></div>
-      <div class="row-2">
-        <label>Title (optional)<input type="text" id="singleTitle" placeholder="Auto-fetched when available"></label>
-        <label>Collection (optional)<input type="text" id="singleCollection" placeholder="e.g. Recipes, Music, Travel"></label>
-      </div>
-      <label>Tags (optional, comma-separated)<input type="text" id="singleTags" placeholder="funny, cooking, inspiration"></label>
-      <label>Notes (optional)<textarea id="singleNotes" rows="2" placeholder="Why you saved this…"></textarea></label>
+      <details class="add-details" id="addDetails">
+        <summary>Optional details (title, collection, tags, notes)</summary>
+        <div class="add-details-body">
+          <div class="row-2">
+            <label>Title (optional)<input type="text" id="singleTitle" placeholder="Auto-fetched when available"></label>
+            <label>Collection (optional)<input type="text" id="singleCollection" placeholder="e.g. Recipes, Music, Travel"></label>
+          </div>
+          <label>Tags (optional, comma-separated)<input type="text" id="singleTags" placeholder="funny, cooking, inspiration"></label>
+          <label>Notes (optional)<textarea id="singleNotes" rows="2" placeholder="Why you saved this…"></textarea></label>
+        </div>
+      </details>
+      <label class="keep-open"><input type="checkbox" id="keepOpenAdd"> Keep open to add another</label>
       <button class="btn btn-primary btn-block" id="singleAddBtn">Add to library</button>
     </div>
     <div class="tab-panel" id="tab-bulk" hidden>
@@ -343,6 +351,10 @@
       </div>
       <button class="btn btn-primary btn-block" id="bulkAddBtn">Add all links</button>
       <div class="bulk-result" id="bulkResult"></div>
+      <div class="bulk-actions" id="bulkActions" hidden>
+        <button class="btn" id="bulkMoreBtn">Add more</button>
+        <button class="btn btn-primary" id="bulkDoneBtn">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -440,7 +452,8 @@
 
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div class="tv-hint">← → ↑ ↓ move · OK open · Back close · F fullscreen · T theatre</div>
-<div class="toast" id="toast" hidden></div>
+<button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
 <script src="app.js"></script>
 </body>
 </html>
