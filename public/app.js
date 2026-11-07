@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v29";
+  const REELROOM_VERSION = "v30";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -47,6 +47,7 @@
     orgTags: new Set(),
     lpSuppress: 0,
     groups: [],
+    renamingCollection: "",
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -223,13 +224,49 @@
     const cols = [...new Set(state.items.map((i) => i.collection).filter(Boolean))].sort();
     const wrap = $("#collectionList");
     wrap.innerHTML = cols.length
-      ? cols.map((c) => `<button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}</button>`).join("")
+      ? cols.map((c) => `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}</button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`).join("")
       : `<div class="side-footer" style="margin:0;padding:4px 12px;">No collections yet</div>`;
     wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
       state.collection = state.collection === b.dataset.collection ? "" : b.dataset.collection;
       render();
       closeSidebar();
     }));
+    wrap.querySelectorAll("[data-rename]").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openRenameCollection(b.dataset.rename);
+    }));
+  }
+
+  // ---- v30: rename a collection label across all its videos ----
+  function openRenameCollection(name) {
+    state.renamingCollection = name;
+    const n = state.items.filter((i) => i.collection === name).length;
+    const sub = $("#renameSub"); if (sub) sub.textContent = `“${name}” · ${n} video${n === 1 ? "" : "s"}`;
+    const inp = $("#renameInput"); if (inp) inp.value = name;
+    $("#renameModal").hidden = false;
+    updateDock(); updateTopbar();
+    setTimeout(() => { if (inp) { inp.focus(); inp.select(); } }, 40);
+  }
+  async function saveRenameCollection() {
+    const old = state.renamingCollection;
+    const inp = $("#renameInput");
+    const next = String(inp ? inp.value : "").trim();
+    if (!next) { toast("Type a new name first"); return; }
+    if (next === old) { $("#renameModal").hidden = true; return; }
+    const ids = state.items.filter((i) => i.collection === old).map((i) => i.id);
+    const btn = $("#renameSaveBtn"); btn.disabled = true; btn.textContent = "Renaming…";
+    try {
+      for (const id of ids) {
+        const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { collection: next } });
+        const idx = state.items.findIndex((i) => i.id === id);
+        if (idx >= 0) state.items[idx] = updated;
+      }
+      if (state.collection === old) state.collection = next;
+      $("#renameModal").hidden = true;
+      render();
+      toast(`Renamed to “${next}” on ${ids.length} video${ids.length === 1 ? "" : "s"}`);
+    } catch (e) { toast(e.message); }
+    finally { btn.disabled = false; btn.textContent = "Rename on all videos"; }
   }
 
   function renderTags() {
@@ -2647,6 +2684,9 @@
     window.addEventListener("scroll", updateScrollUI, { passive: true });
     window.addEventListener("resize", updateScrollUI);
 
+    // v30: rename collection
+    const renameSave = $("#renameSaveBtn"); if (renameSave) renameSave.addEventListener("click", saveRenameCollection);
+    const renameInput = $("#renameInput"); if (renameInput) renameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveRenameCollection(); } });
     // v28: compact / flip / jump / rail
     const compactBtn = $("#compactBtn");
     if (compactBtn) compactBtn.addEventListener("click", () => { prefs.compact = !prefs.compact; savePrefs(); applyCompact(); });
@@ -2728,7 +2768,7 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkClipboard(); updateDock(); } });
     try {
       const mo = new MutationObserver(updateDock);
-      ["playerModal","addModal","editModal","orgModal","jumpModal","installModal","loginModal","sidebar"].forEach((id) => {
+      ["playerModal","addModal","editModal","orgModal","jumpModal","renameModal","installModal","loginModal","sidebar"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
       });
@@ -2948,6 +2988,7 @@
         if (state.backGuardOpen) { hideBackGuard(); return; }
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
+        else if (!$("#renameModal").hidden) $("#renameModal").hidden = true;
         else if (!$("#jumpModal").hidden) $("#jumpModal").hidden = true;
         else if (!$("#orgModal").hidden) $("#orgModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;

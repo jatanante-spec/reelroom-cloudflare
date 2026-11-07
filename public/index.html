@@ -395,6 +395,16 @@
   </div>
 </div>
 
+<!-- v30: rename collection -->
+<div class="modal-backdrop" id="renameModal" hidden>
+  <div class="modal org-modal" role="dialog" aria-modal="true" aria-label="Rename collection">
+    <div class="modal-head"><h2>Rename collection</h2><button class="icon-btn" data-close="renameModal">✕</button></div>
+    <p class="org-sub" id="renameSub"></p>
+    <label>New name<input type="text" id="renameInput" maxlength="80"></label>
+    <button class="btn btn-primary btn-block" id="renameSaveBtn" style="margin-top:14px">Rename on all videos</button>
+  </div>
+</div>
+
 <!-- v28: jump navigator -->
 <div class="modal-backdrop" id="jumpModal" hidden>
   <div class="modal org-modal" role="dialog" aria-modal="true" aria-label="Jump to">

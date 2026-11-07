@@ -1069,3 +1069,18 @@ body.tv-mode .jump-rail, body.tv-mode .rail-bubble { display: none; }
   #jumpModal { align-items: flex-end; padding: 0; }
   #jumpModal .modal { border-radius: 18px 18px 0 0; max-width: none; max-height: 92vh; }
 }
+
+/* ===== v30: rename collection ===== */
+.collection-row { display: flex; align-items: center; gap: 2px; }
+.collection-row .side-link { flex: 1; min-width: 0; }
+.side-rename {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; border: 0;
+  background: transparent; color: var(--text-dim); font-size: 14px; cursor: pointer;
+  display: grid; place-items: center;
+}
+.side-rename:hover { background: var(--bg-hover); color: var(--text); }
+.side-rename:focus-visible { outline: 2px solid #4b8dff; outline-offset: 2px; }
+@media (max-width: 640px) {
+  #renameModal { align-items: flex-end; padding: 0; }
+  #renameModal .modal { border-radius: 18px 18px 0 0; max-width: none; }
+}
