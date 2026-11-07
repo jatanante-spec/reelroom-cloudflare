@@ -896,3 +896,52 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
 .continue-label { margin-top: 5px; font-size: 11.5px; font-weight: 600; }
 .continue-label.resume { color: #2dd4a7; }
 .continue-label.reopen { color: #ffb020; }
+
+/* ===== v24: auto-hide dock + copied-link chip + bottom-sheet add ===== */
+#headTopBtn, #toTopBtn { display: none !important; } /* dock replaces them */
+@media (max-width: 900px) { #addBtn { display: none; } } /* dock owns Add on phones */
+
+.dock {
+  position: fixed; z-index: 46; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 2px; padding: 5px 6px; border-radius: 999px;
+  background: rgba(18,18,18,.78); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,.09); box-shadow: 0 10px 34px rgba(0,0,0,.55);
+  transition: transform .28s ease, opacity .28s ease;
+}
+.dock.dock-hidden { transform: translateX(-50%) translateY(160%); opacity: 0; }
+.dk {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent;
+  color: #c9c9c9; display: grid; place-items: center; cursor: pointer;
+}
+.dk svg { width: 21px; height: 21px; }
+.dk:active { background: rgba(255,255,255,.09); }
+.dk:focus-visible { outline: 3px solid #4b8dff; outline-offset: 2px; }
+.dk-add { background: #f1f1f1; color: #0f0f0f; }
+.dk-add:active { background: #d9d9d9; }
+
+.clip-chip {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 52;
+  display: flex; align-items: center; gap: 9px; max-width: 94vw;
+  background: #1d2b1f; border: 1px solid #3f6b47; color: #d9f5de; border-radius: 999px;
+  padding: 10px 14px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.55);
+}
+.clip-go { border: 0; background: #7bd88f; color: #08260f; border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 12.5px; cursor: pointer; }
+.clip-x { border: 0; background: none; color: #9fc9a6; font-size: 15px; padding: 2px 4px; cursor: pointer; }
+
+.toast { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+body.standalone .toast { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+
+.url-row { display: flex; gap: 8px; align-items: stretch; }
+.url-row input { flex: 1; }
+.paste-btn { white-space: nowrap; padding: 0 14px; font-size: 13.5px; border-color: #3f6b47; background: #1d2b1f; color: #d9f5de; }
+.shared-note { font-size: 12.5px; color: #7bd88f; margin: -4px 0 10px; }
+
+@media (max-width: 640px) {
+  #addModal { align-items: flex-end; padding: 0; }
+  #addModal .modal { border-radius: 18px 18px 0 0; max-width: none; max-height: 92vh; padding: 16px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* v24 dock clearance */
+main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }

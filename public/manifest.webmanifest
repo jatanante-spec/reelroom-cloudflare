@@ -34,6 +34,12 @@
       "purpose": "maskable"
     }
   ],
+  "share_target": {
+    "action": "/?share=1",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
   "shortcuts": [
     {
       "name": "Add links",

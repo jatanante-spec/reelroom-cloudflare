@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v23";
+  const REELROOM_VERSION = "v24";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -35,6 +35,11 @@
     fbStreamFailed: new Set(),
     lastAddedId: null,
     lastAddedTimer: null,
+    dockHidden: false,
+    dockLastY: 0,
+    lastClipText: "",
+    lastClipAt: 0,
+    clipUrl: "",
   };
 
   const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
@@ -1449,6 +1454,7 @@
         if (!keep) { $("#addModal").hidden = true; scrollToCard(data.item.id); }
         toast("Added to library", { label: "Undo", fn: () => undoAdd(data.item) });
       }
+      hideClip();
       $("#singleUrl").value = ""; $("#singleTitle").value = ""; $("#singleNotes").value = "";
       $("#detectedPlatform").textContent = "";
       if (!keep) {
@@ -2118,13 +2124,15 @@
     try { params = new URLSearchParams(window.location.search); } catch { return; }
     const add = params.get("add");
     const view = params.get("view");
-    if (!add && !view) return;
+    const sharedUrl = extractUrl(params.get("url") || params.get("text") || params.get("title") || "");
+    if (!add && !view && !sharedUrl) return;
     if (view === "favorites" || view === "unwatched" || view === "all") {
       state.view = view;
       $$(".side-link[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
       render();
     }
     if (add === "1") { $("#addModal").hidden = false; }
+    if (sharedUrl) openAddWith(sharedUrl, true);
     // Clean the URL so a refresh does not re-trigger the shortcut.
     try { window.history.replaceState({}, "", window.location.pathname); } catch {}
   }
@@ -2188,6 +2196,57 @@
     const head = $("#headTopBtn"); if (head) head.hidden = playerOpen || y <= 80;
     const fab = $("#toTopBtn"); if (fab) fab.hidden = playerOpen || y <= window.innerHeight * 0.9;
     const p = $("#scrollProgress"); if (p) p.style.width = (Math.min(1, y / max) * 100) + "%";
+    updateDock();
+  }
+
+  // ---- v24 B: ultra-minimal auto-hide dock ----
+  function updateDock() {
+    const dock = $("#dock"); if (!dock) return;
+    const blocked = $$(".modal-backdrop").some((m) => !m.hidden) || sidebarOpen();
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    let hide = state.dockHidden;
+    if (tvEnabled()) hide = false; // TV remote: never auto-hide
+    else if (y > state.dockLastY + 6 && y > 90) hide = true;
+    else if (y < state.dockLastY - 6 || y < 40) hide = false;
+    state.dockLastY = y; state.dockHidden = hide;
+    dock.hidden = blocked;
+    dock.classList.toggle("dock-hidden", hide && !blocked);
+  }
+
+  // ---- v24 C: copied-link chip ----
+  function extractUrl(text) {
+    const m = String(text || "").match(/https?:\/\/[^\s"'<>]+/);
+    return m ? safeUrl(m[0]) : "";
+  }
+  function hideClip() { const c = $("#clipChip"); if (c) c.hidden = true; }
+  async function checkClipboard() {
+    if (!navigator.clipboard || !navigator.clipboard.readText) return;
+    if (document.hidden) return;
+    if ($$(".modal-backdrop").some((m) => !m.hidden)) return;
+    const now = Date.now(); if (now - state.lastClipAt < 4000) return;
+    state.lastClipAt = now;
+    let text = ""; try { text = await navigator.clipboard.readText(); } catch { return; }
+    text = String(text || "").trim();
+    if (!text || text.length > 2000 || text === state.lastClipText) return;
+    const url = extractUrl(text); if (!url || !detectPlatform(url)) return;
+    state.lastClipText = text;
+    if (state.items.some((i) => i.url === url)) return; // already saved
+    state.clipUrl = url;
+    const p = detectPlatform(url);
+    const t = $("#clipText"); if (t) t.textContent = (p ? PLATFORM_LABEL[p] : "Video") + " link copied";
+    const c = $("#clipChip"); if (c) c.hidden = false;
+  }
+
+  // ---- v24 D: open add sheet pre-filled (share target / chip) ----
+  function openAddWith(url, shared) {
+    $$(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === "single"));
+    $("#tab-single").hidden = false; $("#tab-bulk").hidden = true;
+    $("#addModal").hidden = false;
+    $("#singleUrl").value = url || "";
+    $("#singleUrl").dispatchEvent(new Event("input"));
+    const sn = $("#sharedNote"); if (sn) sn.hidden = !shared;
+    $("#singleUrl").focus();
+    updateDock();
   }
 
   function applyAutoplayToggle() {
@@ -2296,6 +2355,36 @@
     const headTop = $("#headTopBtn"); if (headTop) headTop.addEventListener("click", scrollToTop);
     window.addEventListener("scroll", updateScrollUI, { passive: true });
     window.addEventListener("resize", updateScrollUI);
+
+    // v24 B: dock actions
+    const dock = $("#dock");
+    if (dock) {
+      dock.addEventListener("focusin", () => { state.dockHidden = false; dock.classList.remove("dock-hidden"); });
+      $("#dockHome").addEventListener("click", () => { state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); });
+      $("#dockSearch").addEventListener("click", () => { scrollToTop(); setTimeout(() => $("#searchInput").focus(), 250); });
+      $("#dockAdd").addEventListener("click", () => openAddWith("", false));
+      $("#dockTop").addEventListener("click", scrollToTop);
+    }
+    // v24 C: chip + clipboard watch
+    const clipAdd = $("#clipAddBtn");
+    if (clipAdd) clipAdd.addEventListener("click", async () => { const u = state.clipUrl; hideClip(); if (u) { $("#singleUrl").value = u; await addSingle(); } });
+    const clipX = $("#clipDismissBtn"); if (clipX) clipX.addEventListener("click", hideClip);
+    const pasteBtn = $("#pasteBtn");
+    if (pasteBtn) pasteBtn.addEventListener("click", async () => {
+      try {
+        const t = await navigator.clipboard.readText();
+        if (t) { $("#singleUrl").value = t.trim(); $("#singleUrl").dispatchEvent(new Event("input")); }
+      } catch { toast("Clipboard unavailable — paste manually"); }
+    });
+    window.addEventListener("focus", () => { checkClipboard(); updateDock(); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkClipboard(); updateDock(); } });
+    try {
+      const mo = new MutationObserver(updateDock);
+      ["playerModal","addModal","editModal","installModal","loginModal","sidebar"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
+      });
+    } catch {}
 
     stampVersion();
     ensurePlayerActionButtons();

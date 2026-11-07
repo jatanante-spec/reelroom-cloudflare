@@ -324,8 +324,12 @@
     </div>
     <div class="tab-panel" id="tab-single">
       <label>URL
-        <input type="url" id="singleUrl" placeholder="https://www.youtube.com/watch?v=… or TikTok / Instagram / Facebook link">
+        <span class="url-row">
+          <input type="url" id="singleUrl" placeholder="https://www.youtube.com/watch?v=… or TikTok / Instagram / Facebook link">
+          <button type="button" class="btn paste-btn" id="pasteBtn" title="Paste from clipboard">📋 Paste</button>
+        </span>
       </label>
+      <div class="shared-note" id="sharedNote" hidden>Shared link received ✓</div>
       <div class="detected" id="detectedPlatform"></div>
       <details class="add-details" id="addDetails">
         <summary>Optional details (title, collection, tags, notes)</summary>
@@ -452,6 +456,22 @@
 
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div class="tv-hint">← → ↑ ↓ move · OK open · Back close · F fullscreen · T theatre</div>
+<!-- v24 C: copied-link chip -->
+<div class="clip-chip" id="clipChip" hidden>
+  <span class="clip-ico" aria-hidden="true">🔗</span>
+  <span id="clipText">Link copied</span>
+  <button type="button" class="clip-go" id="clipAddBtn">Add it</button>
+  <button type="button" class="clip-x" id="clipDismissBtn" aria-label="Dismiss">✕</button>
+</div>
+
+<!-- v24 B: ultra-minimal auto-hide dock -->
+<nav class="dock" id="dock" aria-label="Quick actions">
+  <button type="button" class="dk" id="dockHome" title="Home" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></button>
+  <button type="button" class="dk" id="dockSearch" title="Search" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  <button type="button" class="dk dk-add" id="dockAdd" title="Add link" aria-label="Add link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button type="button" class="dk" id="dockTop" title="Back to top" aria-label="Back to top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+</nav>
+
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
 <script src="app.js"></script>
