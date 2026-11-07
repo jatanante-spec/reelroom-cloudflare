@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v27";
+  const REELROOM_VERSION = "v28";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -46,6 +46,7 @@
     orgCol: "",
     orgTags: new Set(),
     lpSuppress: 0,
+    groups: [],
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -302,7 +303,7 @@
 
   function renderGrid(list) {
     const grid = $("#grid");
-    grid.innerHTML = list.map((item) => `
+    const cardHtml = (item) => `
       <article class="card ${state.lastAddedId === item.id ? "just-added" : ""} ${state.selected.has(item.id) ? "selected" : ""}" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
         <span class="selbox" aria-hidden="true">✓</span>
         <button class="org-tool" data-act="org" title="Organize (collection / tags)" aria-label="Organize">🏷</button>
@@ -321,7 +322,15 @@
             </span>
           </div>
         </div>
-      </article>`).join("");
+      </article>`;
+    // v28: group the wall so the rail / headers / jump can address sections.
+    state.groups = groupList(list);
+    grid.innerHTML = state.groups.map((g) => `
+      <section class="vgroup" data-group="${esc(g.key)}">
+        <div class="group-head"><h2>${esc(g.label)}</h2><span class="n">${g.items.length}</span></div>
+        <div class="grid group-grid">${g.items.map(cardHtml).join("")}</div>
+      </section>`).join("");
+    buildRail();
 
     grid.querySelectorAll(".card").forEach((card) => {
       const id = card.dataset.id;
@@ -1709,7 +1718,7 @@
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
   const prefs = Object.assign({ tvMode: null, theatre: false, autoplay: true, advanceSecs: 0, continueClearedAt: null,
     soundRemember: true, autoResume: true, backGuard: "smart", swipeNav: "edges", reelsMode: false,
-    igFullPost: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
+    igFullPost: false, compact: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
   if (!prefs.igAdjust || !prefs.igAdjust.reel) prefs.igAdjust = { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } };
   // v17: the old v16 default was "ask" for every platform. Move that default to
   // Smart once; explicit user choices made after this migration are preserved.
@@ -2321,6 +2330,112 @@
     e.preventDefault(); list[i].focus();
   }
 
+  // ---- v28: scroll navigation ----
+  function groupList(list) {
+    const map = new Map();
+    const keyOf = (it) => {
+      if (state.sort === "title") { const c = (displayTitle(it).trim()[0] || "#").toUpperCase(); return /[A-Z]/.test(c) ? c : "#"; }
+      if (state.sort === "platform") return it.platform || "other";
+      const d = new Date(it.created_at || 0);
+      if (!Number.isFinite(d.getTime())) return "unknown";
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    };
+    const labelOf = (k) => {
+      if (state.sort === "title") return k;
+      if (state.sort === "platform") return PLATFORM_LABEL[k] || k;
+      if (k === "unknown") return "Unknown date";
+      const [y, m] = k.split("-");
+      return new Date(Number(y), Number(m) - 1, 1).toLocaleString("en", { month: "short", year: "numeric" });
+    };
+    const shortOf = (k) => {
+      if (state.sort === "title") return k;
+      if (state.sort === "platform") return (PLATFORM_LABEL[k] || k).slice(0, 2);
+      if (k === "unknown") return "?";
+      return labelOf(k).split(" ")[0];
+    };
+    list.forEach((it) => {
+      const k = keyOf(it);
+      if (!map.has(k)) map.set(k, { key: k, label: labelOf(k), short: shortOf(k), items: [] });
+      map.get(k).items.push(it);
+    });
+    return [...map.values()];
+  }
+  function buildRail() {
+    const rail = $("#jumpRail"); if (!rail) return;
+    rail.innerHTML = state.groups.map((g, i) => `<button class="tick" data-idx="${i}" title="${esc(g.label)}">${esc(g.short)}</button>`).join("") + `<div class="rail-thumb" id="railThumb"></div>`;
+    rail.querySelectorAll(".tick").forEach((t) => t.addEventListener("click", (e) => { e.stopPropagation(); jumpToGroup(Number(t.dataset.idx)); }));
+    updateRail();
+  }
+  function updateRail() {
+    const rail = $("#jumpRail"); if (!rail || !state.groups.length) return;
+    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    const frac = Math.min(1, (window.scrollY || 0) / max);
+    const th = $("#railThumb"); const r = rail.getBoundingClientRect();
+    if (th) { const h = Math.max(24, r.height * 0.12); th.style.height = h + "px"; th.style.top = (frac * (r.height - h)) + "px"; }
+    const secs = [...document.querySelectorAll(".vgroup")];
+    let cur = 0;
+    secs.forEach((sec, i) => { if (sec.offsetTop - 100 <= (window.scrollY || 0)) cur = i; });
+    rail.querySelectorAll(".tick").forEach((t, i) => t.classList.toggle("on", i === cur));
+  }
+  function jumpToGroup(idx) {
+    const sec = document.querySelectorAll(".vgroup")[idx];
+    if (sec) { try { window.scrollTo({ top: sec.offsetTop - 70, behavior: "smooth" }); } catch { window.scrollTo(0, sec.offsetTop - 70); } }
+  }
+  function scrubRail(clientY) {
+    const rail = $("#jumpRail"); if (!rail) return;
+    const r = rail.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    window.scrollTo(0, frac * max);
+    const idx = Math.min(state.groups.length - 1, Math.floor(frac * state.groups.length));
+    const b = $("#railBubble");
+    if (b && state.groups[idx]) { b.style.display = "block"; b.textContent = state.groups[idx].label; b.style.top = (r.top + frac * r.height) + "px"; }
+  }
+  function openJump() {
+    renderJump();
+    $("#jumpModal").hidden = false;
+    updateDock(); updateTopbar();
+  }
+  function renderJump() {
+    const gl = $("#jumpGroupsLabel"); if (gl) gl.textContent = state.sort === "title" ? "Letter" : state.sort === "platform" ? "Platform" : "Month added";
+    const gw = $("#jumpGroups");
+    if (gw) {
+      gw.innerHTML = state.groups.map((g, i) => `<button class="org-pick" data-gidx="${i}">${esc(g.label)} <span class="n">${g.items.length}</span></button>`).join("");
+      gw.querySelectorAll("[data-gidx]").forEach((b) => b.addEventListener("click", () => { $("#jumpModal").hidden = true; jumpToGroup(Number(b.dataset.gidx)); }));
+    }
+    const cc = {}; state.items.forEach((i) => { if (i.collection) cc[i.collection] = (cc[i.collection] || 0) + 1; });
+    const cw = $("#jumpCols");
+    if (cw) {
+      cw.innerHTML = Object.entries(cc).sort().map(([c, n]) => `<button class="org-pick" data-jcol="${esc(c)}">📁 ${esc(c)} <span class="n">${n}</span></button>`).join("") || `<span class="org-sub">No collections yet</span>`;
+      cw.querySelectorAll("[data-jcol]").forEach((b) => b.addEventListener("click", () => { state.collection = b.dataset.jcol; state.view = "all"; $("#jumpModal").hidden = true; render(); scrollToTop(); }));
+    }
+    const tc = {}; state.items.forEach((i) => (i.tags || []).forEach((t) => { tc[t] = (tc[t] || 0) + 1; }));
+    const tw = $("#jumpTags");
+    if (tw) {
+      tw.innerHTML = Object.entries(tc).sort().map(([t, n]) => `<button class="org-pick" data-jtag="${esc(t)}">#${esc(t)} <span class="n">${n}</span></button>`).join("") || `<span class="org-sub">No tags yet</span>`;
+      tw.querySelectorAll("[data-jtag]").forEach((b) => b.addEventListener("click", () => { state.tag = b.dataset.jtag; state.view = "all"; $("#jumpModal").hidden = true; render(); scrollToTop(); }));
+    }
+    const pw = $("#jumpPlats");
+    if (pw) {
+      const pc = {}; state.items.forEach((i) => { pc[i.platform] = (pc[i.platform] || 0) + 1; });
+      pw.innerHTML = Object.keys(PLATFORM_LABEL).map((p) => `<button class="org-pick" data-jplat="${p}">${PLATFORM_LABEL[p]} <span class="n">${pc[p] || 0}</span></button>`).join("");
+      pw.querySelectorAll("[data-jplat]").forEach((b) => b.addEventListener("click", () => { state.platform = b.dataset.jplat; state.view = "all"; $("#jumpModal").hidden = true; render(); scrollToTop(); }));
+    }
+  }
+  function applyCompact() {
+    document.body.classList.toggle("compact", !!prefs.compact);
+    const b = $("#compactBtn"); if (b) { b.setAttribute("aria-pressed", String(!!prefs.compact)); b.textContent = prefs.compact ? "Comfortable" : "Compact"; }
+  }
+  function syncFlip() {
+    const b = $("#flipBtn"); if (b) b.textContent = state.sort === "oldest" ? "Oldest ↑" : "Newest ↓";
+  }
+  function flipOrder() {
+    state.sort = state.sort === "oldest" ? "newest" : "oldest";
+    const sel = $("#sortSelect"); if (sel) sel.value = state.sort;
+    syncFlip(); render(); scrollToTop();
+    toast(state.sort === "oldest" ? "Oldest first" : "Newest first");
+  }
+
   // ---- v23: back to top + scroll progress ----
   function scrollToTop() {
     try { window.scrollTo({ top: 0, behavior: "smooth" }); }
@@ -2335,6 +2450,7 @@
     const p = $("#scrollProgress"); if (p) p.style.width = (Math.min(1, y / max) * 100) + "%";
     updateDock();
     updateTopbar();
+    updateRail();
   }
 
   // ---- v24 B: ultra-minimal auto-hide dock ----
@@ -2477,7 +2593,7 @@
     });
 
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
-    $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
+    $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; syncFlip(); render(); });
 
     $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
     $$(".platform-link").forEach((b) => b.addEventListener("click", () => { state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
@@ -2528,6 +2644,20 @@
     window.addEventListener("scroll", updateScrollUI, { passive: true });
     window.addEventListener("resize", updateScrollUI);
 
+    // v28: compact / flip / jump / rail
+    const compactBtn = $("#compactBtn");
+    if (compactBtn) compactBtn.addEventListener("click", () => { prefs.compact = !prefs.compact; savePrefs(); applyCompact(); });
+    const flipBtn = $("#flipBtn"); if (flipBtn) flipBtn.addEventListener("click", flipOrder);
+    const dockJump = $("#dockJump"); if (dockJump) dockJump.addEventListener("click", openJump);
+    const rail = $("#jumpRail");
+    if (rail) {
+      let dragging = false;
+      rail.addEventListener("pointerdown", (e) => { dragging = true; try { rail.setPointerCapture(e.pointerId); } catch {} scrubRail(e.clientY); });
+      rail.addEventListener("pointermove", (e) => { if (dragging) scrubRail(e.clientY); });
+      const stop = () => { dragging = false; const b = $("#railBubble"); if (b) b.style.display = "none"; };
+      rail.addEventListener("pointerup", stop);
+      rail.addEventListener("pointercancel", stop);
+    }
     // v26: select + bulk + organize + edge swipe
     const selectBtn = $("#selectBtn");
     if (selectBtn) selectBtn.addEventListener("click", () => setSelecting(!state.selecting));
@@ -2595,7 +2725,7 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkClipboard(); updateDock(); } });
     try {
       const mo = new MutationObserver(updateDock);
-      ["playerModal","addModal","editModal","orgModal","installModal","loginModal","sidebar"].forEach((id) => {
+      ["playerModal","addModal","editModal","orgModal","jumpModal","installModal","loginModal","sidebar"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
       });
@@ -2815,6 +2945,7 @@
         if (state.backGuardOpen) { hideBackGuard(); return; }
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
+        else if (!$("#jumpModal").hidden) $("#jumpModal").hidden = true;
         else if (!$("#orgModal").hidden) $("#orgModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;
         else if (state.searchOpen) closeTopSearch();
@@ -2873,6 +3004,8 @@
   bind();
   setupInstall();
   applyTvMode();
+  applyCompact();
+  syncFlip();
   if (prefs.theatre) $("#playerModal").classList.add("theatre");
   updateFsBtn();
   checkAuth().then((ok) => { if (ok) { loadItems(); applyLaunchShortcut(); } });

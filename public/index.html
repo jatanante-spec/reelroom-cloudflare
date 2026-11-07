@@ -96,6 +96,8 @@
       </div>
       <div class="toolbar-right">
         <button class="btn btn-small" id="selectBtn" aria-pressed="false">Select</button>
+        <button class="btn btn-small" id="compactBtn" aria-pressed="false" title="Compact density">Compact</button>
+        <button class="btn btn-small" id="flipBtn" title="Flip newest / oldest">Newest ↓</button>
         <span class="result-count" id="resultCount"></span>
         <select id="sortSelect" aria-label="Sort">
           <option value="newest">Newest first</option>
@@ -115,7 +117,7 @@
     </section>
 
     <div class="active-filters" id="activeFilters"></div>
-    <div class="grid" id="grid"></div>
+    <div class="groups" id="grid"></div>
     <div class="empty" id="emptyState" hidden>
       <div class="empty-ico">📼</div>
       <h2>No links here yet</h2>
@@ -393,6 +395,25 @@
   </div>
 </div>
 
+<!-- v28: jump navigator -->
+<div class="modal-backdrop" id="jumpModal" hidden>
+  <div class="modal org-modal" role="dialog" aria-modal="true" aria-label="Jump to">
+    <div class="modal-head"><h2>Jump to…</h2><button class="icon-btn" data-close="jumpModal">✕</button></div>
+    <div class="org-label" id="jumpGroupsLabel">Section</div>
+    <div class="org-chips" id="jumpGroups"></div>
+    <div class="org-label">Collection</div>
+    <div class="org-chips" id="jumpCols"></div>
+    <div class="org-label">Tag</div>
+    <div class="org-chips" id="jumpTags"></div>
+    <div class="org-label">Platform</div>
+    <div class="org-chips" id="jumpPlats"></div>
+  </div>
+</div>
+
+<!-- v28: right-edge jump rail / scrubber -->
+<div class="jump-rail" id="jumpRail" aria-label="Jump to section"></div>
+<div class="rail-bubble" id="railBubble" aria-hidden="true"></div>
+
 <!-- v26: left-edge grab handle -->
 <button class="edge-handle" id="edgeHandle" aria-label="Open collections"></button>
 
@@ -501,6 +522,7 @@
 <nav class="dock" id="dock" aria-label="Quick actions">
   <button type="button" class="dk" id="dockHome" title="Home" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></button>
   <button type="button" class="dk" id="dockSearch" title="Search" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  <button type="button" class="dk dk-jump" id="dockJump" title="Jump to…" aria-label="Jump to"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11l-3-3"/><path d="M20 17H9l3 3"/></svg></button>
   <button type="button" class="dk dk-add" id="dockAdd" title="Add link" aria-label="Add link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
   <button type="button" class="dk" id="dockTop" title="Back to top" aria-label="Back to top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
 </nav>
