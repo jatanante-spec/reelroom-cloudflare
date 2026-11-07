@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v25";
+  const REELROOM_VERSION = "v26";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -40,6 +40,12 @@
     topHidden: false,
     topLastY: 0,
     searchOpen: false,
+    selecting: false,
+    selected: new Set(),
+    orgIds: [],
+    orgCol: "",
+    orgTags: new Set(),
+    lpSuppress: 0,
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -297,7 +303,9 @@
   function renderGrid(list) {
     const grid = $("#grid");
     grid.innerHTML = list.map((item) => `
-      <article class="card ${state.lastAddedId === item.id ? "just-added" : ""}" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
+      <article class="card ${state.lastAddedId === item.id ? "just-added" : ""} ${state.selected.has(item.id) ? "selected" : ""}" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
+        <span class="selbox" aria-hidden="true">✓</span>
+        <button class="org-tool" data-act="org" title="Organize (collection / tags)" aria-label="Organize">🏷</button>
         ${thumbHtml(item)}
         <div class="card-body">
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
@@ -318,6 +326,7 @@
     grid.querySelectorAll(".card").forEach((card) => {
       const id = card.dataset.id;
       card.addEventListener("click", (e) => {
+        if (Date.now() - state.lpSuppress < 450) return; // long-press just fired
         const actBtn = e.target.closest("[data-act]");
         if (actBtn) {
           e.stopPropagation();
@@ -325,13 +334,38 @@
           if (actBtn.dataset.act === "fav") toggleFav(item);
           if (actBtn.dataset.act === "edit") openEdit(item);
           if (actBtn.dataset.act === "delete") deleteItem(item);
+          if (actBtn.dataset.act === "org") openOrg([id]);
           return;
         }
+        if (state.selecting) { toggleSel(id); return; }
         openPlayer(id);
       });
       card.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPlayer(id); }
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (state.selecting) toggleSel(id); else openPlayer(id);
+        }
       });
+      // v26: long-press (~0.5s) opens Organize; right-click too on desktop.
+      let lpTimer = null;
+      const lpCancel = () => { clearTimeout(lpTimer); lpTimer = null; };
+      card.addEventListener("touchstart", (e) => {
+        if (state.selecting || !$("#playerModal").hidden) return;
+        const t = e.touches[0]; if (!t) return;
+        const x = t.clientX, y = t.clientY;
+        lpCancel();
+        lpTimer = setTimeout(() => {
+          state.lpSuppress = Date.now();
+          if (navigator.vibrate) { try { navigator.vibrate(10); } catch {} }
+          openOrg([id]);
+        }, 500);
+        const move = (ev) => { const m = ev.touches[0]; if (m && (Math.abs(m.clientX - x) > 10 || Math.abs(m.clientY - y) > 10)) lpCancel(); };
+        const end = () => { lpCancel(); card.removeEventListener("touchmove", move); card.removeEventListener("touchend", end); card.removeEventListener("touchcancel", end); };
+        card.addEventListener("touchmove", move, { passive: true });
+        card.addEventListener("touchend", end, { passive: true });
+        card.addEventListener("touchcancel", end, { passive: true });
+      }, { passive: true });
+      card.addEventListener("contextmenu", (e) => { e.preventDefault(); openOrg([id]); });
     });
   }
 
@@ -1535,6 +1569,101 @@
     } catch (e) { toast(e.message); }
   }
 
+  // ---- v26: quick organize (collections / tags) ----
+  function allCollections() { return [...new Set(state.items.map((i) => i.collection).filter(Boolean))].sort(); }
+  function allTags() { return [...new Set(state.items.flatMap((i) => i.tags || []))].sort(); }
+
+  function setSelecting(on) {
+    state.selecting = on;
+    if (!on) state.selected.clear();
+    document.body.classList.toggle("selecting", on);
+    const sb = $("#selectBtn"); if (sb) { sb.textContent = on ? "Cancel" : "Select"; sb.setAttribute("aria-pressed", String(on)); }
+    const bb = $("#bulkBar"); if (bb) bb.hidden = !on;
+    render(); updateBulkCount();
+  }
+  function toggleSel(id) {
+    if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+    render(); updateBulkCount();
+  }
+  function updateBulkCount() {
+    const el = $("#bulkCount"); if (el) el.textContent = `${state.selected.size} selected`;
+  }
+
+  function openOrg(ids) {
+    if (!ids || !ids.length) return;
+    state.orgIds = ids;
+    const first = state.items.find((i) => i.id === ids[0]);
+    state.orgCol = ids.length === 1 ? (first?.collection || "") : "";
+    state.orgTags = new Set(ids.length === 1 ? (first?.tags || []) : []);
+    const sub = $("#orgSub");
+    if (sub) sub.textContent = ids.length === 1 ? displayTitle(first) : `${ids.length} videos selected`;
+    renderOrg();
+    $("#orgModal").hidden = false;
+    updateDock(); updateTopbar();
+  }
+  function renderOrg() {
+    const colWrap = $("#orgColChips"), tagWrap = $("#orgTagChips");
+    if (colWrap) {
+      colWrap.innerHTML = allCollections().map((c) => `<button class="org-pick ${state.orgCol === c ? "on" : ""}" data-col="${esc(c)}">📁 ${esc(c)}</button>`).join("") +
+        `<button class="org-pick ${state.orgCol === "" ? "on" : ""}" data-col="">None</button>`;
+      colWrap.querySelectorAll("[data-col]").forEach((b) => b.addEventListener("click", () => { state.orgCol = b.dataset.col; renderOrg(); }));
+    }
+    if (tagWrap) {
+      tagWrap.innerHTML = allTags().map((t) => `<button class="org-pick ${state.orgTags.has(t) ? "on" : ""}" data-tag="${esc(t)}">#${esc(t)}</button>`).join("");
+      tagWrap.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
+        const t = b.dataset.tag;
+        if (state.orgTags.has(t)) state.orgTags.delete(t); else state.orgTags.add(t);
+        renderOrg();
+      }));
+    }
+    const sug = $("#orgSuggest");
+    if (sug) {
+      const first = state.items.find((i) => i.id === state.orgIds[0]);
+      const words = String(first?.title || "").toLowerCase().match(/[a-z]{4,}/g) || [];
+      const list = [...new Set(words)].filter((w) => !state.orgTags.has(w) && !allTags().includes(w)).slice(0, 4);
+      sug.innerHTML = list.length ? "Suggested: " + list.map((w) => `<button class="tag-pill" data-sug="${esc(w)}">#${esc(w)}</button>`).join(" ") : "";
+      sug.querySelectorAll("[data-sug]").forEach((b) => b.addEventListener("click", () => { state.orgTags.add(b.dataset.sug); renderOrg(); }));
+    }
+  }
+  async function saveOrg() {
+    const ids = state.orgIds.slice();
+    const snapshot = ids.map((id) => { const i = state.items.find((x) => x.id === id); return { id, collection: i?.collection || "", tags: [...(i?.tags || [])] }; });
+    const btn = $("#orgSaveBtn"); btn.disabled = true; btn.textContent = "Saving…";
+    try {
+      for (const id of ids) {
+        const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { collection: state.orgCol, tags: [...state.orgTags] } });
+        const idx = state.items.findIndex((i) => i.id === id);
+        if (idx >= 0) state.items[idx] = updated;
+      }
+      $("#orgModal").hidden = true;
+      if (state.selecting) setSelecting(false); else render();
+      toast(`Saved ${ids.length} video${ids.length === 1 ? "" : "s"}`, {
+        label: "Undo",
+        fn: async () => {
+          for (const s of snapshot) {
+            const updated = await api(`/api/items/${s.id}`, { method: "PATCH", body: { collection: s.collection, tags: s.tags } });
+            const idx = state.items.findIndex((i) => i.id === s.id);
+            if (idx >= 0) state.items[idx] = updated;
+          }
+          render(); toast("Reverted");
+        },
+      });
+    } catch (e) { toast(e.message); }
+    finally { btn.disabled = false; btn.textContent = "Save"; }
+  }
+  async function bulkFav() {
+    const ids = [...state.selected];
+    try {
+      for (const id of ids) {
+        const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { favorite: true } });
+        const idx = state.items.findIndex((i) => i.id === id);
+        if (idx >= 0) state.items[idx] = updated;
+      }
+      toast(`Added ${ids.length} to favorites`);
+      setSelecting(false);
+    } catch (e) { toast(e.message); }
+  }
+
   async function refreshMeta() {
     if (!state.editingId) return;
     try {
@@ -2207,7 +2336,7 @@
   // ---- v24 B: ultra-minimal auto-hide dock ----
   function updateDock() {
     const dock = $("#dock"); if (!dock) return;
-    const blocked = $$(".modal-backdrop").some((m) => !m.hidden) || sidebarOpen();
+    const blocked = $$(".modal-backdrop").some((m) => !m.hidden) || sidebarOpen() || state.selecting;
     const y = window.scrollY || document.documentElement.scrollTop || 0;
     let hide = state.dockHidden;
     if (tvEnabled()) hide = false; // TV remote: never auto-hide
@@ -2395,6 +2524,39 @@
     window.addEventListener("scroll", updateScrollUI, { passive: true });
     window.addEventListener("resize", updateScrollUI);
 
+    // v26: select + bulk + organize + edge swipe
+    const selectBtn = $("#selectBtn");
+    if (selectBtn) selectBtn.addEventListener("click", () => setSelecting(!state.selecting));
+    const bulkCancel = $("#bulkCancelBtn"); if (bulkCancel) bulkCancel.addEventListener("click", () => setSelecting(false));
+    const bulkOrg = $("#bulkOrganizeBtn"); if (bulkOrg) bulkOrg.addEventListener("click", () => { if (state.selected.size) openOrg([...state.selected]); });
+    const bulkFavBtn = $("#bulkFavBtn"); if (bulkFavBtn) bulkFavBtn.addEventListener("click", bulkFav);
+    const orgSave = $("#orgSaveBtn"); if (orgSave) orgSave.addEventListener("click", saveOrg);
+    const orgAddCol = $("#orgAddColBtn");
+    if (orgAddCol) orgAddCol.addEventListener("click", () => {
+      const inp = $("#orgNewCol"); const v = inp.value.trim(); if (!v) return;
+      state.orgCol = v; inp.value = ""; renderOrg();
+    });
+    const orgAddTag = $("#orgAddTagBtn");
+    if (orgAddTag) orgAddTag.addEventListener("click", () => {
+      const inp = $("#orgNewTag"); const v = inp.value.trim().replace(/^#/, ""); if (!v) return;
+      state.orgTags.add(v); inp.value = ""; renderOrg();
+    });
+    const edgeHandle = $("#edgeHandle"); if (edgeHandle) edgeHandle.addEventListener("click", () => setSidebar(true));
+    // swipe in from the left edge opens the sidebar (player closed, no modal)
+    let edgeX = null, edgeY = null;
+    document.addEventListener("touchstart", (e) => {
+      if (!$("#playerModal").hidden || sidebarOpen() || $$(".modal-backdrop").some((m) => !m.hidden)) { edgeX = null; return; }
+      const t = e.touches[0]; if (!t) return;
+      edgeX = t.clientX <= 28 ? t.clientX : null; edgeY = t.clientY;
+    }, { passive: true });
+    document.addEventListener("touchend", (e) => {
+      if (edgeX === null) return;
+      const t = e.changedTouches[0]; if (!t) { edgeX = null; return; }
+      const dx = t.clientX - edgeX, dy = t.clientY - edgeY;
+      if (dx > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) setSidebar(true);
+      edgeX = null;
+    }, { passive: true });
+
     // v25: Smart top bar
     const topbar = document.querySelector(".topbar");
     if (topbar) topbar.addEventListener("focusin", () => { state.topHidden = false; document.body.classList.remove("top-hidden"); });
@@ -2425,7 +2587,7 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkClipboard(); updateDock(); } });
     try {
       const mo = new MutationObserver(updateDock);
-      ["playerModal","addModal","editModal","installModal","loginModal","sidebar"].forEach((id) => {
+      ["playerModal","addModal","editModal","orgModal","installModal","loginModal","sidebar"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
       });
@@ -2645,6 +2807,7 @@
         if (state.backGuardOpen) { hideBackGuard(); return; }
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
+        else if (!$("#orgModal").hidden) $("#orgModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;
         else if (state.searchOpen) closeTopSearch();
         else if (!$("#addModal").hidden) $("#addModal").hidden = true;

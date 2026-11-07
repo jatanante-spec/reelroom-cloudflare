@@ -95,6 +95,7 @@
         <button class="chip" data-platform="facebook">Facebook</button>
       </div>
       <div class="toolbar-right">
+        <button class="btn btn-small" id="selectBtn" aria-pressed="false">Select</button>
         <span class="result-count" id="resultCount"></span>
         <select id="sortSelect" aria-label="Sort">
           <option value="newest">Newest first</option>
@@ -364,6 +365,36 @@
     </div>
   </div>
 </div>
+
+<!-- v26: bulk organize bar -->
+<div class="bulk-bar" id="bulkBar" hidden>
+  <span class="bulk-n" id="bulkCount">0 selected</span>
+  <button class="btn btn-primary btn-small" id="bulkOrganizeBtn">Organize</button>
+  <button class="btn btn-small" id="bulkFavBtn" title="Add to favorites">★</button>
+  <button class="btn btn-small" id="bulkCancelBtn" aria-label="Cancel selection">✕</button>
+</div>
+
+<!-- v26: organize bottom sheet -->
+<div class="modal-backdrop" id="orgModal" hidden>
+  <div class="modal org-modal" role="dialog" aria-modal="true" aria-label="Organize">
+    <div class="modal-head">
+      <h2>Organize</h2>
+      <button class="icon-btn" data-close="orgModal">✕</button>
+    </div>
+    <p class="org-sub" id="orgSub"></p>
+    <div class="org-label">Collection</div>
+    <div class="org-chips" id="orgColChips"></div>
+    <div class="org-inline"><input id="orgNewCol" placeholder="New collection…"><button class="btn btn-small" id="orgAddColBtn">Create</button></div>
+    <div class="org-label">Tags</div>
+    <div class="org-chips" id="orgTagChips"></div>
+    <div class="org-inline"><input id="orgNewTag" placeholder="New tag…"><button class="btn btn-small" id="orgAddTagBtn">Add</button></div>
+    <div class="org-suggest" id="orgSuggest"></div>
+    <button class="btn btn-primary btn-block" id="orgSaveBtn" style="margin-top:16px">Save</button>
+  </div>
+</div>
+
+<!-- v26: left-edge grab handle -->
+<button class="edge-handle" id="edgeHandle" aria-label="Open collections"></button>
 
 <!-- Edit modal -->
 <div class="modal-backdrop" id="editModal" hidden>
