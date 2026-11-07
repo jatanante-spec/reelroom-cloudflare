@@ -30,6 +30,7 @@
     <input type="search" id="searchInput" placeholder="Search titles, creators, tags…  ( / )" autocomplete="off">
   </div>
   <div class="topbar-actions">
+    <button class="icon-btn" id="topSearchBtn" title="Search" aria-label="Search">🔍</button>
     <button class="icon-btn" id="headTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
     <button class="icon-btn" id="tvModeBtn" title="TV / remote mode" aria-pressed="false">📺</button>
     <button class="btn btn-primary" id="addBtn">+ Add links</button>
@@ -45,6 +46,7 @@
     </div>
   </div>
 </header>
+<div class="top-context" id="topContext" aria-hidden="true"></div>
 
 <!-- v14: mobile drawer scrim. Tap outside the sidebar to close it. -->
 <div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>

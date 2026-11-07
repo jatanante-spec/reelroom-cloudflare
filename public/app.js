@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v24";
+  const REELROOM_VERSION = "v25";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -37,6 +37,9 @@
     lastAddedTimer: null,
     dockHidden: false,
     dockLastY: 0,
+    topHidden: false,
+    topLastY: 0,
+    searchOpen: false,
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -193,6 +196,7 @@
     renderGrid(list);
     renderContinue();
     $("#resultCount").textContent = `${list.length} of ${state.items.length} link${state.items.length === 1 ? "" : "s"}`;
+    updateTopContext(list.length);
     updateScrollUI();
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
     $("#emptyState").hidden = list.length > 0;
@@ -2197,6 +2201,7 @@
     const fab = $("#toTopBtn"); if (fab) fab.hidden = playerOpen || y <= window.innerHeight * 0.9;
     const p = $("#scrollProgress"); if (p) p.style.width = (Math.min(1, y / max) * 100) + "%";
     updateDock();
+    updateTopbar();
   }
 
   // ---- v24 B: ultra-minimal auto-hide dock ----
@@ -2211,6 +2216,40 @@
     state.dockLastY = y; state.dockHidden = hide;
     dock.hidden = blocked;
     dock.classList.toggle("dock-hidden", hide && !blocked);
+  }
+
+  // ---- v25: Smart top bar ----
+  function updateTopContext(count) {
+    const el = $("#topContext"); if (!el) return;
+    const label = state.platform ? PLATFORM_LABEL[state.platform]
+      : state.collection ? state.collection
+      : state.view === "favorites" ? "Favorites"
+      : state.view === "unwatched" ? "Unwatched" : "All platforms";
+    const n = typeof count === "number" ? count : filtered().length;
+    el.innerHTML = `<b>${esc(label)}</b> · ${n} link${n === 1 ? "" : "s"}${state.search ? ` · “${esc(state.search)}”` : ""}`;
+  }
+  function updateTopbar() {
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const tv = tvEnabled();
+    const blocked = state.searchOpen || $$(".modal-backdrop").some((m) => !m.hidden) || sidebarOpen();
+    let hide = state.topHidden;
+    if (tv || blocked) hide = false;
+    else if (y > state.topLastY + 6 && y > 90) hide = true;
+    else if (y < state.topLastY - 6 || y < 40) hide = false;
+    state.topLastY = y; state.topHidden = hide;
+    document.body.classList.toggle("top-hidden", hide);
+    document.body.classList.toggle("top-condensed", !tv && y > 60 && !state.searchOpen);
+  }
+  function openTopSearch() {
+    state.searchOpen = true;
+    document.body.classList.add("search-open");
+    document.body.classList.remove("top-hidden");
+    setTimeout(() => { const si = $("#searchInput"); if (si) si.focus(); }, 30);
+  }
+  function closeTopSearch() {
+    state.searchOpen = false;
+    document.body.classList.remove("search-open");
+    updateTopbar();
   }
 
   // ---- v24 C: copied-link chip ----
@@ -2356,12 +2395,18 @@
     window.addEventListener("scroll", updateScrollUI, { passive: true });
     window.addEventListener("resize", updateScrollUI);
 
+    // v25: Smart top bar
+    const topbar = document.querySelector(".topbar");
+    if (topbar) topbar.addEventListener("focusin", () => { state.topHidden = false; document.body.classList.remove("top-hidden"); });
+    const tsb = $("#topSearchBtn"); if (tsb) tsb.addEventListener("click", openTopSearch);
+    const si = $("#searchInput");
+    if (si) si.addEventListener("blur", () => setTimeout(() => { if (state.searchOpen && document.activeElement !== si) closeTopSearch(); }, 120));
     // v24 B: dock actions
     const dock = $("#dock");
     if (dock) {
       dock.addEventListener("focusin", () => { state.dockHidden = false; dock.classList.remove("dock-hidden"); });
       $("#dockHome").addEventListener("click", () => { state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); });
-      $("#dockSearch").addEventListener("click", () => { scrollToTop(); setTimeout(() => $("#searchInput").focus(), 250); });
+      $("#dockSearch").addEventListener("click", () => { scrollToTop(); openTopSearch(); });
       $("#dockAdd").addEventListener("click", () => openAddWith("", false));
       $("#dockTop").addEventListener("click", scrollToTop);
     }
@@ -2601,6 +2646,7 @@
         if (state.moreOpen) { closeFsMore(); return; }
         if (!$("#installModal").hidden) $("#installModal").hidden = true;
         else if (!$("#editModal").hidden) $("#editModal").hidden = true;
+        else if (state.searchOpen) closeTopSearch();
         else if (!$("#addModal").hidden) $("#addModal").hidden = true;
         else if (!$("#playerModal").hidden) closePlayer();
         else if (tvEnabled() && document.activeElement && document.activeElement.closest(".card")) document.activeElement.blur();
@@ -2610,7 +2656,7 @@
       if (sidebarOpen() && e.key === "Backspace") { e.preventDefault(); closeSidebar(); return; }
       if (e.key === "Home" && $("#playerModal").hidden && !sidebarOpen()) { e.preventDefault(); scrollToTop(); return; }
       if (inFullscreen()) showFsControls();
-      if (e.key === "/") { e.preventDefault(); closeSidebar(); $("#searchInput").focus(); return; }
+      if (e.key === "/") { e.preventDefault(); closeSidebar(); openTopSearch(); return; }
       if (!$("#playerModal").hidden) {
         if (state.moreOpen) {
           if (e.key === "ArrowUp") { e.preventDefault(); moveFsFocus(-1); }
