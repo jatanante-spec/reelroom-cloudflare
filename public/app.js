@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v31";
+  const REELROOM_VERSION = "v32";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -50,6 +50,8 @@
     renamingCollection: "",
     modalGuard: false,
     modalGuardFromPop: false,
+    modalFocusFor: null,
+    modalReturnFocus: null,
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -257,18 +259,25 @@
     if (next === old) { $("#renameModal").hidden = true; return; }
     const ids = state.items.filter((i) => i.collection === old).map((i) => i.id);
     const btn = $("#renameSaveBtn"); btn.disabled = true; btn.textContent = "Renaming…";
-    try {
-      for (const id of ids) {
+    let ok = 0; const failed = [];
+    for (const id of ids) {
+      try {
         const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { collection: next } });
         const idx = state.items.findIndex((i) => i.id === id);
         if (idx >= 0) state.items[idx] = updated;
-      }
-      if (state.collection === old) state.collection = next;
+        ok++;
+      } catch { failed.push(id); }
+    }
+    btn.disabled = false; btn.textContent = "Rename on all videos";
+    if (state.collection === old && !failed.length) state.collection = next;
+    if (!failed.length) {
       $("#renameModal").hidden = true;
       render();
-      toast(`Renamed to “${next}” on ${ids.length} video${ids.length === 1 ? "" : "s"}`);
-    } catch (e) { toast(e.message); }
-    finally { btn.disabled = false; btn.textContent = "Rename on all videos"; }
+      toast(`Renamed to “${next}” on ${ok} video${ok === 1 ? "" : "s"}`);
+    } else {
+      render();
+      toast(`Renamed ${ok} of ${ids.length} — ${failed.length} failed. Try again to finish the rest.`);
+    }
   }
 
   function renderTags() {
@@ -399,6 +408,8 @@
       const lpCancel = () => { clearTimeout(lpTimer); lpTimer = null; };
       card.addEventListener("touchstart", (e) => {
         if (state.selecting || !$("#playerModal").hidden) return;
+        // v32: a long-press on the heart / edit / organize button is not a card long-press.
+        if (e.target && e.target.closest && e.target.closest("[data-act], .card-actions, button, a, input, select, textarea")) return;
         const t = e.touches[0]; if (!t) return;
         const x = t.clientX, y = t.clientY;
         lpCancel();
@@ -414,7 +425,10 @@
         card.addEventListener("touchend", end, { passive: true });
         card.addEventListener("touchcancel", end, { passive: true });
       }, { passive: true });
-      card.addEventListener("contextmenu", (e) => { e.preventDefault(); openOrg([id]); });
+      card.addEventListener("contextmenu", (e) => {
+        if (e.target && e.target.closest && e.target.closest("[data-act], .card-actions, button, a, input, select, textarea")) return;
+        e.preventDefault(); openOrg([id]);
+      });
     });
   }
 
@@ -1567,6 +1581,7 @@
       });
       const lines = [`Added: ${data.added.length}`, `Duplicates skipped: ${data.duplicates.length}`];
       if (data.errors.length) lines.push(`Errors: ${data.errors.length}`, ...data.errors.slice(0, 8).map((e) => `• ${e.url} — ${e.error}`));
+      if (data.warnings && data.warnings.length) lines.push(...data.warnings.map((w) => `⚠ ${w}`));
       $("#bulkResult").textContent = lines.join("\n");
       const ba = $("#bulkActions"); if (ba) ba.hidden = false;
       toast(`Added ${data.added.length} link${data.added.length === 1 ? "" : "s"}`);
@@ -1683,39 +1698,60 @@
     const ids = state.orgIds.slice();
     const snapshot = ids.map((id) => { const i = state.items.find((x) => x.id === id); return { id, collection: i?.collection || "", tags: [...(i?.tags || [])] }; });
     const btn = $("#orgSaveBtn"); btn.disabled = true; btn.textContent = "Saving…";
-    try {
-      for (const id of ids) {
+    const saved = [], failed = [];
+    for (const id of ids) {
+      try {
         const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { collection: state.orgCol, tags: [...state.orgTags] } });
         const idx = state.items.findIndex((i) => i.id === id);
         if (idx >= 0) state.items[idx] = updated;
-      }
-      $("#orgModal").hidden = true;
-      if (state.selecting) setSelecting(false); else render();
-      toast(`Saved ${ids.length} video${ids.length === 1 ? "" : "s"}`, {
-        label: "Undo",
-        fn: async () => {
-          for (const s of snapshot) {
+        saved.push(id);
+      } catch { failed.push(id); }
+    }
+    btn.disabled = false; btn.textContent = "Save";
+    const undoSaved = {
+      label: "Undo",
+      fn: async () => {
+        for (const s of snapshot.filter((x) => saved.includes(x.id))) {
+          try {
             const updated = await api(`/api/items/${s.id}`, { method: "PATCH", body: { collection: s.collection, tags: s.tags } });
             const idx = state.items.findIndex((i) => i.id === s.id);
             if (idx >= 0) state.items[idx] = updated;
-          }
-          render(); toast("Reverted");
-        },
-      });
-    } catch (e) { toast(e.message); }
-    finally { btn.disabled = false; btn.textContent = "Save"; }
+          } catch {}
+        }
+        render(); toast("Reverted");
+      },
+    };
+    if (!failed.length) {
+      $("#orgModal").hidden = true;
+      if (state.selecting) setSelecting(false); else render();
+      toast(`Saved ${ids.length} video${ids.length === 1 ? "" : "s"}`, ids.length ? undoSaved : undefined);
+      return;
+    }
+    // v32: keep the failed videos selected so they can be retried; report exactly what happened.
+    state.orgIds = failed;
+    const sub = $("#orgSub"); if (sub) sub.textContent = `${failed.length} video${failed.length === 1 ? "" : "s"} still need${failed.length === 1 ? "s" : ""} saving`;
+    renderOrg();
+    if (state.selecting) { state.selected = new Set(failed); updateBulkCount(); }
+    toast(`Saved ${saved.length} of ${ids.length} — ${failed.length} failed. Failed videos stay selected.`, saved.length ? undoSaved : undefined);
   }
   async function bulkFav() {
     const ids = [...state.selected];
-    try {
-      for (const id of ids) {
+    const saved = [], failed = [];
+    for (const id of ids) {
+      try {
         const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { favorite: true } });
         const idx = state.items.findIndex((i) => i.id === id);
         if (idx >= 0) state.items[idx] = updated;
-      }
+        saved.push(id);
+      } catch { failed.push(id); }
+    }
+    if (!failed.length) {
       toast(`Added ${ids.length} to favorites`);
       setSelecting(false);
-    } catch (e) { toast(e.message); }
+    } else {
+      state.selected = new Set(failed); updateBulkCount(); render();
+      toast(`Favorited ${saved.length} of ${ids.length} — ${failed.length} failed. Failed videos stay selected.`);
+    }
   }
 
   async function refreshMeta() {
@@ -1748,7 +1784,9 @@
       const text = await file.text();
       const json = JSON.parse(text);
       const data = await api("/api/import", { method: "POST", body: json });
-      toast(`Imported ${data.added} link${data.added === 1 ? "" : "s"} (${data.duplicates} duplicates skipped)`);
+      let msg = `Imported ${data.added} link${data.added === 1 ? "" : "s"} (${data.duplicates} duplicates skipped)`;
+      if (data.warnings && data.warnings.length) msg += " — " + data.warnings.join(" ");
+      toast(msg);
       await loadItems();
     } catch (e) { toast("Import failed: " + e.message); }
   }
@@ -2548,7 +2586,17 @@
   // ---- v24 C: copied-link chip ----
   function extractUrl(text) {
     const m = String(text || "").match(/https?:\/\/[^\s"'<>]+/);
-    return m ? safeUrl(m[0]) : "";
+    if (!m) return "";
+    let u = m[0];
+    // v32: shared links often arrive wrapped in punctuation, e.g. "https://youtu.be/abc)."
+    u = u.replace(/[.,;!?]+$/, "");
+    while (/[)\]]$/.test(u)) {
+      const open = (u.match(/[(\[]/g) || []).length;
+      const close = (u.match(/[)\]]/g) || []).length;
+      if (close > open) u = u.slice(0, -1); else break;
+    }
+    u = u.replace(/[.,;!?]+$/, "");
+    return safeUrl(u);
   }
   function hideClip() { const c = $("#clipChip"); if (c) c.hidden = true; }
   async function checkClipboard() {
@@ -2967,6 +3015,21 @@
     const GUARD_MODALS = ["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal"];
     const anyGuardModal = () => GUARD_MODALS.some((id) => { const el = document.getElementById(id); return el && !el.hidden; });
     const topGuardModal = () => GUARD_MODALS.find((id) => { const el = document.getElementById(id); return el && !el.hidden; });
+    // v32: keep Tab / D-pad focus inside the open popup, and restore it on close.
+    function focusablesIn(el) {
+      return [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(isVisible);
+    }
+    function trapModalTab(e) {
+      if (e.key !== "Tab") return;
+      const id = topGuardModal(); if (!id) return;
+      const el = document.getElementById(id);
+      const f = focusablesIn(el); if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !el.contains(active)) { e.preventDefault(); last.focus(); }
+      } else if (active === last || !el.contains(active)) { e.preventDefault(); first.focus(); }
+    }
     window.addEventListener("popstate", () => {
       if (!state.modalGuard) return;
       state.modalGuard = false;
@@ -2979,6 +3042,22 @@
     try {
       const moGuard = new MutationObserver(() => {
         const open = anyGuardModal();
+        // v32: move focus into a newly opened popup; restore it when the last one closes.
+        const openId = topGuardModal();
+        if (openId && state.modalFocusFor !== openId) {
+          state.modalFocusFor = openId;
+          const el = document.getElementById(openId);
+          const ae = document.activeElement;
+          if (ae && el && !el.contains(ae)) state.modalReturnFocus = ae;
+          setTimeout(() => {
+            const m = document.getElementById(openId);
+            if (m && !m.hidden) { const f = focusablesIn(m); if (f.length && !m.contains(document.activeElement)) f[0].focus(); }
+          }, 40);
+        } else if (!openId && state.modalFocusFor) {
+          state.modalFocusFor = null;
+          const r = state.modalReturnFocus; state.modalReturnFocus = null;
+          if (r && r.focus && document.contains(r)) setTimeout(() => { try { r.focus(); } catch {} }, 20);
+        }
         if (open && !state.modalGuard && $("#playerModal").hidden) {
           state.modalGuard = true;
           try { history.pushState({ reelroom: "modal-guard" }, "", location.href); } catch {}
@@ -2995,6 +3074,15 @@
     window.addEventListener("popstate", () => {
       if (!state.playerHistoryActive) return;
       if ($("#playerModal").hidden) { state.playerHistoryActive = false; return; }
+      // v32: if Edit (or another popup) is open on top of the player, Back closes
+      // that popup first and keeps the video playing.
+      const gm = topGuardModal();
+      if (gm) {
+        document.getElementById(gm).hidden = true;
+        updateDock(); updateTopbar();
+        armPlayerHistory();
+        return;
+      }
       state.playerHistoryActive = false; // the guard entry was just popped
       handlePlayerBack(true);
     });
@@ -3013,6 +3101,7 @@
     document.addEventListener("keydown", (e) => {
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      trapModalTab(e);
       trapSidebarTab(e);
       if (sidebarOpen() && e.key === "Escape") { closeSidebar(); return; }
       if (e.key === "Escape") {
