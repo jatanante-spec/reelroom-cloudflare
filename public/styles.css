@@ -1084,3 +1084,11 @@ body.tv-mode .jump-rail, body.tv-mode .rail-bubble { display: none; }
   #renameModal { align-items: flex-end; padding: 0; }
   #renameModal .modal { border-radius: 18px 18px 0 0; max-width: none; }
 }
+
+/* ===== v31: no accidental text selection on long-press; Back closes popups ===== */
+.card, .modal, .dock, .topbar, .sidebar, .chip, .org-pick, .btn, .icon-btn,
+.group-head, .bulk-bar, .clip-chip, .side-link, .tag-pill, .collection-row,
+h1, h2, h3, .card-title, .org-sub, .sheet, .modal-head {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }

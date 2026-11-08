@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v30";
+  const REELROOM_VERSION = "v31";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -48,6 +48,8 @@
     lpSuppress: 0,
     groups: [],
     renamingCollection: "",
+    modalGuard: false,
+    modalGuardFromPop: false,
     lastClipText: "",
     lastClipAt: 0,
     clipUrl: "",
@@ -402,6 +404,7 @@
         lpCancel();
         lpTimer = setTimeout(() => {
           state.lpSuppress = Date.now();
+          try { window.getSelection && window.getSelection().removeAllRanges(); } catch {}
           if (navigator.vibrate) { try { navigator.vibrate(10); } catch {} }
           openOrg([id]);
         }, 500);
@@ -1644,6 +1647,7 @@
     const sub = $("#orgSub");
     if (sub) sub.textContent = ids.length === 1 ? displayTitle(first) : `${ids.length} videos selected`;
     renderOrg();
+    try { window.getSelection && window.getSelection().removeAllRanges(); } catch {}
     $("#orgModal").hidden = false;
     updateDock(); updateTopbar();
   }
@@ -2959,6 +2963,33 @@
       noteEl.addEventListener("click", () => noteEl.classList.toggle("expanded"));
     }
     window.addEventListener("message", onPlayerMessage);
+    // v31: phone Back closes an open popup instead of leaving the app.
+    const GUARD_MODALS = ["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal"];
+    const anyGuardModal = () => GUARD_MODALS.some((id) => { const el = document.getElementById(id); return el && !el.hidden; });
+    const topGuardModal = () => GUARD_MODALS.find((id) => { const el = document.getElementById(id); return el && !el.hidden; });
+    window.addEventListener("popstate", () => {
+      if (!state.modalGuard) return;
+      state.modalGuard = false;
+      state.modalGuardFromPop = true;
+      const m = topGuardModal();
+      if (m) document.getElementById(m).hidden = true;
+      state.modalGuardFromPop = false;
+      updateDock(); updateTopbar();
+    });
+    try {
+      const moGuard = new MutationObserver(() => {
+        const open = anyGuardModal();
+        if (open && !state.modalGuard && $("#playerModal").hidden) {
+          state.modalGuard = true;
+          try { history.pushState({ reelroom: "modal-guard" }, "", location.href); } catch {}
+        } else if (!open && state.modalGuard) {
+          state.modalGuard = false;
+          if (!state.modalGuardFromPop) { try { history.back(); } catch {} }
+        }
+      });
+      GUARD_MODALS.forEach((id) => { const el = document.getElementById(id); if (el) moGuard.observe(el, { attributes: true, attributeFilter: ["hidden"] }); });
+    } catch {}
+
     // v16: phone Back / history guard. The player pushes one history entry so the
     // hardware Back button can be intercepted instead of instantly leaving the page.
     window.addEventListener("popstate", () => {
