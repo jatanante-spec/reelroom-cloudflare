@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v32";
+  const REELROOM_VERSION = "v33";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -33,6 +33,10 @@
     fbNativeVideo: null,
     fbStreamSeq: 0,
     fbStreamFailed: new Set(),
+    // v33: the small Facebook file kept as a safety net, and the resolution of
+    // the file actually being played.
+    fbSmallUrl: null,
+    fbResolution: 0,
     lastAddedId: null,
     lastAddedTimer: null,
     dockHidden: false,
@@ -1249,6 +1253,8 @@
     const stage = $("#playerStage");
     state.fbNativeVideo = null;
     state.fbStreamSeq++;
+    state.fbSmallUrl = null;
+    state.fbResolution = 0;
     ensurePlayerActionButtons();
 
     const sources = activeSources(item);
@@ -1978,6 +1984,10 @@
       if (!cur || cur.id !== item.id || state.activePlatform !== "facebook") return;
       const url = data && data.ok ? safeUrl(data.stream_url) : "";
       if (!url) return;
+      // v33: Facebook publishes several renditions of the same video. The sharp
+      // one is played; the small one is kept as a safety net for slow networks.
+      state.fbSmallUrl = data && data.fallback_url ? safeUrl(data.fallback_url) : "";
+      state.fbResolution = data && data.resolution ? Number(data.resolution) : 0;
       mountFacebookNativeVideo(item, url, seq);
     }).catch(() => { /* regular Facebook iframe remains as fallback */ });
   }
@@ -1985,6 +1995,8 @@
   function mountFacebookNativeVideo(item, url, seq) {
     const box = document.getElementById("stageBox");
     if (!box || seq !== state.fbStreamSeq) return;
+    const fallbackUrl = state.fbSmallUrl || "";
+    const resolution = state.fbResolution || 0;
     const video = document.createElement("video");
     video.className = "fb-native-video";
     video.src = url;
@@ -2008,6 +2020,18 @@
       bridge.currentTime = video.currentTime || 0;
       if (video.duration > 0) bridge.duration = video.duration;
     };
+    // v33: if the sharp file has not started playing after 12 seconds, use the
+    // small file instead of leaving the viewer staring at a black screen.
+    let started = false;
+    const startWatch = setTimeout(() => {
+      if (started || state.fbNativeVideo !== video) return;
+      if (video.readyState >= 3) return;
+      if (!fallbackUrl || video.dataset.fbSmallTried) return;
+      video.dataset.fbSmallTried = "1";
+      video.src = fallbackUrl;
+      video.load();
+      scheduleFacebookNativePlay(video);
+    }, 12000);
     video.addEventListener("loadedmetadata", () => {
       sync();
       if (video.videoWidth > 0 && video.videoHeight > 0) {
@@ -2020,16 +2044,31 @@
     video.addEventListener("timeupdate", sync);
     video.addEventListener("durationchange", sync);
     video.addEventListener("play", () => { bridge.playerState = 1; clearAutoplayNudges(); });
-    video.addEventListener("playing", () => { bridge.playerState = 1; clearAutoplayNudges(); });
+    video.addEventListener("playing", () => { bridge.playerState = 1; clearAutoplayNudges(); started = true; clearTimeout(startWatch); });
     video.addEventListener("pause", () => { bridge.playerState = 2; });
     video.addEventListener("ended", () => { bridge.playerState = 0; sync(); handleEnded(); });
     video.addEventListener("volumechange", () => { setSoundConfirmed(!video.muted && video.volume > 0); });
-    video.addEventListener("error", () => { fallbackFacebookIframe(item, seq); });
+    video.addEventListener("error", () => {
+      // v33: try the small file before giving up on the native player.
+      if (fallbackUrl && !video.dataset.fbSmallTried) {
+        video.dataset.fbSmallTried = "1";
+        clearTimeout(startWatch);
+        video.src = fallbackUrl;
+        video.load();
+        scheduleFacebookNativePlay(video);
+        return;
+      }
+      fallbackFacebookIframe(item, seq);
+    });
     initSoundFor("facebook", { mutedStart: true });
     cancelCountdown();
     renderUpNext({ ...item, platform: "facebook" });
     const note = document.querySelector(".embed-note");
-    if (note) note.textContent = "Playing a Facebook-hosted stream. If it stops working, ReelRoom will switch back to the regular Facebook player.";
+    if (note) {
+      const q = resolution >= 480 ? resolution + "p" : "";
+      note.textContent = "Playing Facebook's own video file" + (q ? " (" + q + ")" : "") +
+        ". If it stops working, ReelRoom will switch back to the regular Facebook player.";
+    }
     scheduleFacebookNativePlay(video);
     updateSoundUI();
   }
