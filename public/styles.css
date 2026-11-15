@@ -813,12 +813,13 @@ body.tv-mode .player-shell.pseudo-fs .fs-more-grid { grid-template-columns: 1fr;
 .sound-helper { display: none; }
 .player-shell:fullscreen .sound-helper:not([hidden]),
 .player-shell.pseudo-fs .sound-helper:not([hidden]) {
-  display: inline-flex; align-items: center; gap: 10px;
-  position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%);
-  z-index: 7; border: 0; border-radius: 999px; padding: 13px 20px;
-  background: linear-gradient(135deg, #ff4d4d, #ff7a59); color: #fff;
-  font-size: 15px; font-weight: 800; cursor: pointer;
-  box-shadow: 0 12px 30px rgba(255, 77, 77, .35);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  position: absolute; right: 14px; left: auto; bottom: 86px; transform: none;
+  z-index: 7; border: 1px solid rgba(255,255,255,.28); border-radius: 999px;
+  min-height: 44px; min-width: 44px; padding: 8px 11px;
+  background: rgba(17,19,24,.88); color: #fff;
+  font-size: 13px; font-weight: 650; cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0,0,0,.4);
   max-width: calc(100% - 32px);
 }
 .sound-helper:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }

@@ -39,7 +39,7 @@ test("YouTube and TikTok receive best-effort play commands after navigation", ()
 
 test("sound restore and earlier swipe/Back engines remain intact", () => {
   assert.match(appjs, /function sendUnmute\(platform\)/);
-  assert.match(appjs, /setTimeout\(\(\) => \{ if \(sound\.seq === seq && state\.activePlatform === platform\) sendUnmute\(platform\); \}, 900\);/);
+  assert.match(appjs, /function restoreSoundAfterPlayback\(platform\)/);
   assert.match(appjs, /function swipeStep\(dir\)/);
   assert.match(appjs, /backGuard: "smart"/);
   assert.ok(html.includes('id="swipeLayer"'));

@@ -14,8 +14,8 @@ test("navigation sound init is explicitly muted and stale unmute timers are guar
   assert.match(appjs, /function initSoundFor\(platform, opts = \{\}\)/);
   assert.match(appjs, /const mutedStart = !!opts\.mutedStart \|\| shouldStartMuted\(platform\);/);
   assert.match(appjs, /initSoundFor\(active\.platform, \{ mutedStart: navBoost \}\);/);
-  assert.match(appjs, /if \(!mutedStart && canHostUnmute\(platform\)\)/);
-  assert.match(appjs, /sound\.seq === seq && state\.activePlatform === platform/);
+  assert.match(appjs, /function restoreSoundAfterPlayback\(platform\)/);
+  assert.match(appjs, /sound\.seq !== seq/);
 });
 
 test("swipe/Next/Prev schedules muted play nudges for YouTube and TikTok", () => {
@@ -36,6 +36,6 @@ test("nudges are cleared when sound is requested, guard pauses, or player closes
 test("player state is tracked so nudges stop once playback starts", () => {
   assert.match(appjs, /playerState: -1/);
   assert.match(appjs, /bridge\.playerState = st;/);
-  assert.match(appjs, /if \(st === 1\) clearAutoplayNudges\(\);/);
+  assert.match(appjs, /if \(st === 1\) \{ clearAutoplayNudges\(\); restoreSoundAfterPlayback\(bridge\.platform\); \}/);
   assert.equal(css.split("{").length, css.split("}").length);
 });

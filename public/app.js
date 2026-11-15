@@ -947,7 +947,7 @@
   // makes that state obvious, offers one-tap unmute where the platform allows it,
   // and remembers the choice for this browser session.
   const SOUND_SESSION_KEY = "reelroom.sound.session.v1";
-  const sound = { status: "muted", fallback: false, platform: "", sessionOn: false, confirmTimer: null, seq: 0 };
+  const sound = { status: "muted", fallback: false, platform: "", sessionOn: false, confirmTimer: null, seq: 0, restoreTried: false };
   function loadSoundSession() { try { return sessionStorage.getItem(SOUND_SESSION_KEY) === "on"; } catch { return false; } }
   function saveSoundSession(on) { try { if (on) sessionStorage.setItem(SOUND_SESSION_KEY, "on"); else sessionStorage.removeItem(SOUND_SESSION_KEY); } catch {} }
   sound.sessionOn = loadSoundSession();
@@ -998,27 +998,66 @@
     }
   }
   function setSoundConfirmed(on) {
+    // A muted report during an unmute attempt is not proof that the attempt
+    // has finished. Wait for confirmation or the fallback timer.
+    if (!on && sound.status === "trying") return;
     clearTimeout(sound.confirmTimer);
     sound.fallback = false;
     sound.status = on ? "on" : "muted";
     if (on) rememberSound();
     updateSoundUI();
   }
+  function sendMute(platform) {
+    if (platform === "youtube") ytCommand("mute");
+    else if (platform === "tiktok") tiktokCommand("mute");
+    else if (platform === "facebook" && state.fbNativeVideo) state.fbNativeVideo.muted = true;
+  }
+  // Only attempt once playback has actually started. Muted autoplay remains
+  // the fallback when a browser will not permit automatic sound.
+  function restoreSoundAfterPlayback(platform) {
+    if (!soundRememberOn() || !sound.sessionOn || sound.restoreTried || !canHostUnmute(platform)) return;
+    if (sound.platform !== platform || $("#playerModal").hidden || state.backGuardOpen) return;
+    sound.restoreTried = true;
+    if (sound.status === "on") return;
+    const seq = sound.seq;
+    clearAutoplayNudges();
+    sound.status = "trying"; sound.fallback = false; updateSoundUI();
+    if (platform === "facebook" && state.fbNativeVideo) {
+      const video = state.fbNativeVideo;
+      video.muted = false;
+      const play = video.play();
+      if (play && play.catch) play.catch(() => {
+        if (sound.seq !== seq || state.fbNativeVideo !== video) return;
+        video.muted = true;
+        sound.status = "fallback"; sound.fallback = true; updateSoundUI();
+        const retry = video.play(); if (retry && retry.catch) retry.catch(() => {});
+      });
+    } else sendUnmute(platform);
+    clearTimeout(sound.confirmTimer);
+    sound.confirmTimer = setTimeout(() => {
+      if (sound.seq !== seq || sound.status !== "trying") return;
+      sound.status = "fallback"; sound.fallback = true;
+      // If unmuting stopped an iframe, keep playback going muted.
+      if (bridge.playerState === 2) {
+        sendMute(platform);
+        if (platform === "youtube") ytCommand("playVideo");
+        else if (platform === "tiktok") tiktokCommand("play");
+      }
+      updateSoundUI();
+    }, 2200);
+  }
   function initSoundFor(platform, opts = {}) {
     clearTimeout(sound.confirmTimer);
-    const seq = ++sound.seq;
+    ++sound.seq;
     sound.platform = platform || "";
     sound.fallback = false;
-    // v20: swipe/Next/Prev must not auto-restore sound. Unmuting a freshly
-    // swapped embed can make the browser pause it, which looked like "next
-    // video does not play". Start muted; the user can tap Enable sound.
+    sound.restoreTried = false;
+    // Start navigation muted for reliable playback; restore the remembered
+    // choice only after the new video actually starts playing.
     const mutedStart = !!opts.mutedStart || shouldStartMuted(platform);
     if (platform === "instagram") sound.status = "unknown";
     else sound.status = mutedStart ? "muted" : "trying";
     updateSoundUI();
-    if (!mutedStart && canHostUnmute(platform)) {
-      setTimeout(() => { if (sound.seq === seq && state.activePlatform === platform) sendUnmute(platform); }, 900);
-    }
   }
   function requestSound() {
     const platform = state.activePlatform || sound.platform;
@@ -1026,6 +1065,14 @@
     clearAutoplayNudges();
     state.navAutoplayAt = 0;
     showFsControls();
+    if (sound.status === "on" && canHostUnmute(platform)) {
+      clearTimeout(sound.confirmTimer);
+      sound.sessionOn = false; saveSoundSession(false);
+      sound.restoreTried = true;
+      sound.status = "muted"; sound.fallback = false;
+      sendMute(platform); updateSoundUI();
+      return;
+    }
     if (canHostUnmute(platform)) {
       sound.status = "trying"; sound.fallback = false;
       sendUnmute(platform);
@@ -1058,20 +1105,19 @@
     const fsBtn = $("#fsSoundBtn"), actionBtn = $("#soundActionBtn");
     const on = sound.status === "on";
     const hostable = canHostUnmute(sound.platform);
-    const label = on ? "Sound on"
-      : (sound.fallback ? (hostable ? "Try sound again" : "Tap for sound")
-      : (sound.status === "trying" ? "If silent, tap for sound" : "Tap for sound"));
+    const label = on ? "Sound on" : (sound.status === "trying" ? "Checking sound" : (sound.fallback && hostable ? "Sound?" : (hostable ? "Sound off" : "Sound")));
     const icon = on ? "🔊" : "🔇";
     if (helper) {
-      // For Instagram/Facebook the big button cannot unmute, so once we know that,
-      // show the honest hint instead of a button that would only repeat the hint.
-      helper.hidden = !(big && !on && !state.moreOpen && !(sound.fallback && !hostable));
+      const current = currentList()[state.playerIndex];
+      helper.hidden = !(big && !state.moreOpen && current && !isPostItem(current) && !isLinkItem(current));
       if (helperText) helperText.textContent = label;
       if (helperIcon) helperIcon.textContent = icon;
       helper.setAttribute("aria-pressed", String(on));
+      helper.setAttribute("aria-label", on ? "Mute sound" : (hostable ? "Turn sound on" : "Sound options"));
     }
     if (hint) {
-      hint.hidden = !(big && sound.fallback && !state.moreOpen);
+      // Do not cover the picture with a persistent fallback message.
+      hint.hidden = true;
       hint.textContent = sound.fallback
         ? (hostable
             ? "ReelRoom asked the player to unmute. If it is still silent, tap the speaker inside the video."
@@ -1083,7 +1129,7 @@
     if (fsBtn) {
       fsBtn.textContent = icon + (on ? " Sound on" : " Sound");
       fsBtn.setAttribute("aria-pressed", String(on));
-      fsBtn.title = on ? "Sound on (S)" : "Enable sound (S)";
+      fsBtn.title = on ? "Mute sound (S)" : "Enable sound (S)";
     }
     if (actionBtn) {
       actionBtn.textContent = icon + (on ? " Sound on" : " Enable sound");
@@ -1520,6 +1566,7 @@
     state.igActive = false;
     resetBridge("");
     clearTimeout(sound.confirmTimer);
+    sound.seq++; // invalidate pending sound attempts after the player closes
     sound.status = "muted"; sound.fallback = false; sound.platform = "";
     updateSoundUI();
     // If we pushed a history guard entry, remove it when closing from the UI.
@@ -2290,10 +2337,12 @@
     video.addEventListener("timeupdate", sync);
     video.addEventListener("durationchange", sync);
     video.addEventListener("play", () => { bridge.playerState = 1; clearAutoplayNudges(); });
-    video.addEventListener("playing", () => { bridge.playerState = 1; clearAutoplayNudges(); started = true; clearTimeout(startWatch); });
+    video.addEventListener("playing", () => { bridge.playerState = 1; clearAutoplayNudges(); started = true; clearTimeout(startWatch); restoreSoundAfterPlayback("facebook"); });
     video.addEventListener("pause", () => { bridge.playerState = 2; });
     video.addEventListener("ended", () => { bridge.playerState = 0; sync(); handleEnded(); });
-    video.addEventListener("volumechange", () => { setSoundConfirmed(!video.muted && video.volume > 0); });
+    video.addEventListener("volumechange", () => {
+      if (state.fbNativeVideo === video) setSoundConfirmed(!video.muted && video.volume > 0);
+    });
     video.addEventListener("error", () => {
       // v33: try the small file before giving up on the native player.
       if (fallbackUrl && !video.dataset.fbSmallTried) {
@@ -2372,12 +2421,12 @@
       const info = data.info || {};
       if (typeof info.currentTime === "number") bridge.currentTime = info.currentTime;
       if (typeof info.duration === "number" && info.duration > 0) bridge.duration = info.duration;
+      // A positive volume does not imply the player is unmuted.
       if (typeof info.muted === "boolean") setSoundConfirmed(!info.muted);
-      else if (typeof info.volume === "number") setSoundConfirmed(info.volume > 0);
       const st = data.event === "onStateChange" ? data.info : info.playerState;
       if (typeof st === "number") {
         bridge.playerState = st;
-        if (st === 1) clearAutoplayNudges();
+        if (st === 1) { clearAutoplayNudges(); restoreSoundAfterPlayback(bridge.platform); }
         if (st === 0) handleEnded();
       }
       return;
@@ -2405,7 +2454,7 @@
       if (d.type === "onStateChange") {
         const st = Number(d.value);
         bridge.playerState = st;
-        if (st === 1) clearAutoplayNudges();
+        if (st === 1) { clearAutoplayNudges(); restoreSoundAfterPlayback(bridge.platform); }
         if (st === 0) handleEnded();
       }
     }
