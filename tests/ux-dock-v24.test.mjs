@@ -45,6 +45,6 @@ test("D: PWA share target reaches the add flow", () => {
 test("add modal becomes a bottom sheet on phones; earlier contracts intact", () => {
   assert.match(css, /#addModal \.modal \{ border-radius: 18px 18px 0 0;/);
   assert.match(appjs, /function layoutSwipeZones\(\)/);
-  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq\)/);
+  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq, preparedVideo = null\)/);
   assert.match(appjs, /function undoAdd\(item\)/);
 });

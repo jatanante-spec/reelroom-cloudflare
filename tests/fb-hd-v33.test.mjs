@@ -60,7 +60,7 @@ test("nothing off fbcdn is ever handed back", () => {
 
 test("the frontend plays the sharp file and keeps the small one as a safety net", () => {
   assert.match(appjs, /const REELROOM_VERSION = "v38";/);
-  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq\)/);
+  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq, preparedVideo = null\)/);
   assert.match(appjs, /state\.fbSmallUrl = data && data\.fallback_url \? safeUrl\(data\.fallback_url\) : "";/);
   assert.match(appjs, /const fallbackUrl = state\.fbSmallUrl \|\| "";/);
   assert.match(appjs, /state\.fbResolution = data && data\.resolution \? Number\(data\.resolution\) : 0;/);

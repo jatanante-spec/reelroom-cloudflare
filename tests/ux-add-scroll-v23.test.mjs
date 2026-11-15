@@ -52,7 +52,7 @@ test("back-to-top controls exist and are hidden until useful", () => {
 
 test("earlier player/swipe/Facebook contracts remain intact", () => {
   assert.match(appjs, /function layoutSwipeZones\(\)/);
-  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq\)/);
+  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq, preparedVideo = null\)/);
   assert.match(appjs, /function scheduleAutoplayNudges\(platform\)/);
   assert.match(appjs, /IG_GEOM/);
 });

@@ -1502,10 +1502,16 @@
     cancelCountdown();
     const cls = stageClass(active, embed);
     const embedSrc = embedWithApi(active.platform, item, embed);
+    const prepared = !useBackup && active.platform === "facebook" && !embed.includes("/plugins/post.php") ? takePreparedFacebook(item) : null;
     const navBoost = Date.now() - (state.navAutoplayAt || 0) < 2500;
     state.igActive = active.platform === "instagram" && !!embedSrc;
     const frameHtml = `<iframe src="${esc(embedSrc)}" title="${esc(item.title)}" allow="accelerometer; autoplay *; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen *" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
-    stage.innerHTML = embedSrc
+    // A prepared native video can be mounted without briefly displaying the
+    // fallback iframe first. An unprepared or still-pending item keeps it.
+    const readyPrepared = prepared && prepared.data && safeUrl(prepared.data.stream_url);
+    stage.innerHTML = readyPrepared
+      ? `<div class="${cls}" id="stageBox"></div>`
+      : embedSrc
       ? (state.igActive
           ? `<div class="${cls} ig-window" id="igWindow">${frameHtml}</div>`
           : `<div class="${cls}" id="stageBox">${frameHtml}</div>`)
@@ -1591,9 +1597,10 @@
     if (!useBackup && active.platform === "facebook" &&
         (item.media_type === "video" || item.media_type === "reel") &&
         !embed.includes("/plugins/post.php") && !state.fbStreamFailed.has(item.id)) {
-      tryFacebookStreamUpgrade(item, state.fbStreamSeq);
+      tryFacebookStreamUpgrade(item, state.fbStreamSeq, prepared);
     }
 
+    scheduleNextFacebookPreparation();
     const list = currentList();
     $("#prevBtn").disabled = state.playerIndex <= 0;
     $("#nextBtn").disabled = state.playerIndex >= list.length - 1;
@@ -1604,6 +1611,7 @@
     cancelCountdown();
     stopTracking();
     clearAutoplayNudges();
+    clearNextFacebookPreparation();
     if (state.fbNativeVideo) { try { state.fbNativeVideo.pause(); } catch {} }
     state.fbNativeVideo = null;
     state.fbStreamSeq++;
@@ -2369,30 +2377,85 @@
     });
   }
 
-  // ---- v21: Facebook-hosted stream with iframe fallback ----
-  function tryFacebookStreamUpgrade(item, seq) {
-    api(`/api/items/${item.id}/stream`).then((data) => {
-      if (seq !== state.fbStreamSeq || $("#playerModal").hidden) return;
-      const cur = currentList()[state.playerIndex];
-      if (!cur || cur.id !== item.id || state.activePlatform !== "facebook") return;
-      const url = data && data.ok ? safeUrl(data.stream_url) : "";
-      if (!url) return;
-      // v33: Facebook publishes several renditions of the same video. The sharp
-      // one is played; the small one is kept as a safety net for slow networks.
-      state.fbSmallUrl = data && data.fallback_url ? safeUrl(data.fallback_url) : "";
-      state.fbResolution = data && data.resolution ? Number(data.resolution) : 0;
-      mountFacebookNativeVideo(item, url, seq);
-    }).catch(() => { /* regular Facebook iframe remains as fallback */ });
+  // Prepare at most one next Facebook video in memory. This never stores a
+  // media file on ReelRoom; the browser decides how much to buffer. Avoid
+  // speculative traffic when the device reports data-saving or a 2G network.
+  let nextFacebookPreparation = null, nextFacebookTimer = null;
+  function releasePreparedVideo(entry) {
+    if (!entry || !entry.video) return;
+    const v = entry.video; entry.video = null;
+    try { v.pause(); v.removeAttribute("src"); v.load(); v.remove(); } catch {}
+  }
+  function clearNextFacebookPreparation() {
+    clearTimeout(nextFacebookTimer); nextFacebookTimer = null;
+    const old = nextFacebookPreparation; nextFacebookPreparation = null;
+    if (old) { clearTimeout(old.expiry); old.controller.abort(); releasePreparedVideo(old); }
+  }
+  function scheduleNextFacebookPreparation() {
+    clearNextFacebookPreparation();
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (connection && (connection.saveData || /(^|-)2g$/.test(connection.effectiveType || ""))) return;
+    const list = currentList(); let i = state.playerIndex + 1;
+    while (i < list.length && (isLinkItem(list[i]) || (prefs.reelsMode && !isVerticalItem(list[i])))) i++;
+    const item = list[i];
+    if (!item || item.platform !== "facebook" || !["video", "reel"].includes(item.media_type) ||
+        item.backup_embed_url || state.fbStreamFailed.has(item.id)) return;
+    const entry = { id: item.id, created: Date.now(), controller: new AbortController(), data: null, video: null, claimed: false, promise: null, expiry: null };
+    nextFacebookPreparation = entry;
+    entry.expiry = setTimeout(() => { if (nextFacebookPreparation === entry) clearNextFacebookPreparation(); }, 60000);
+    nextFacebookTimer = setTimeout(() => {
+      nextFacebookTimer = null;
+      if (nextFacebookPreparation !== entry || $("#playerModal").hidden) return;
+      entry.promise = api(`/api/items/${item.id}/stream`, { signal: entry.controller.signal }).then((data) => {
+        if ((!entry.claimed && nextFacebookPreparation !== entry) || $("#playerModal").hidden) return null;
+        const url = data && data.ok ? safeUrl(data.stream_url) : "";
+        if (!url) return null;
+        entry.data = data;
+        if (!entry.claimed) {
+          const video = document.createElement("video");
+          video.muted = true; video.defaultMuted = true; video.playsInline = true;
+          video.preload = "metadata"; video.src = url;
+          video.style.cssText = "position:fixed;width:1px;height:1px;left:-9999px;top:0;pointer-events:none;";
+          video.addEventListener("error", () => { if (entry.video === video) releasePreparedVideo(entry); }, { once: true });
+          entry.video = video; $("#playerShell").appendChild(video);
+          try { video.load(); } catch {}
+        }
+        return data;
+      }).catch(() => null);
+    }, 1500);
+  }
+  function takePreparedFacebook(item) {
+    const entry = nextFacebookPreparation;
+    if (!entry || entry.id !== item.id || Date.now() - entry.created > 60000 || !entry.promise) return null;
+    clearTimeout(nextFacebookTimer); nextFacebookTimer = null; clearTimeout(entry.expiry);
+    nextFacebookPreparation = null; entry.claimed = true;
+    return entry;
   }
 
-  function mountFacebookNativeVideo(item, url, seq) {
+  // ---- Facebook-hosted stream with iframe fallback ----
+  function tryFacebookStreamUpgrade(item, seq, prepared = null) {
+    const request = prepared ? prepared.promise : api(`/api/items/${item.id}/stream`);
+    request.then((data) => {
+      if (seq !== state.fbStreamSeq || $("#playerModal").hidden) { releasePreparedVideo(prepared); return; }
+      const cur = currentList()[state.playerIndex];
+      if (!cur || cur.id !== item.id || state.activePlatform !== "facebook") { releasePreparedVideo(prepared); return; }
+      const url = data && data.ok ? safeUrl(data.stream_url) : "";
+      if (!url) { releasePreparedVideo(prepared); return; }
+      state.fbSmallUrl = data && data.fallback_url ? safeUrl(data.fallback_url) : "";
+      state.fbResolution = data && data.resolution ? Number(data.resolution) : 0;
+      const video = prepared && prepared.video; if (prepared) prepared.video = null;
+      mountFacebookNativeVideo(item, url, seq, video);
+    }).catch(() => { releasePreparedVideo(prepared); /* regular Facebook iframe remains as fallback */ });
+  }
+
+  function mountFacebookNativeVideo(item, url, seq, preparedVideo = null) {
     const box = document.getElementById("stageBox");
     if (!box || seq !== state.fbStreamSeq) return;
     const fallbackUrl = state.fbSmallUrl || "";
     const resolution = state.fbResolution || 0;
-    const video = document.createElement("video");
+    const video = preparedVideo || document.createElement("video");
     video.className = "fb-native-video";
-    video.src = url;
+    if (!preparedVideo) video.src = url;
     video.muted = true;
     video.defaultMuted = true;
     video.autoplay = true;
@@ -2434,6 +2497,11 @@
         layoutSwipeZones();
       }
     });
+    // Metadata may already have arrived before this prepared element was mounted.
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      aspectCache.set(item.id, video.videoWidth / video.videoHeight);
+      lastFitKey = ""; fitFacebook(item); layoutSwipeZones(); sync();
+    }
     video.addEventListener("timeupdate", sync);
     video.addEventListener("durationchange", sync);
     video.addEventListener("play", () => { bridge.playerState = 1; clearAutoplayNudges(); });

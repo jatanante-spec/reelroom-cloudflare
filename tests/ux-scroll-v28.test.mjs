@@ -47,6 +47,6 @@ test("earlier contracts intact", () => {
   assert.match(appjs, /function openOrg\(ids\)/);
   assert.match(appjs, /function updateTopbar\(\)/);
   assert.match(appjs, /function layoutSwipeZones\(\)/);
-  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq\)/);
+  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq, preparedVideo = null\)/);
   assert.equal(css.split("{").length, css.split("}").length);
 });

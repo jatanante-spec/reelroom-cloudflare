@@ -24,14 +24,14 @@ test("frontend keeps the iframe fallback and only upgrades Facebook video/reel i
   assert.match(appjs, /const REELROOM_VERSION = "v\d+";/);
   assert.match(appjs, /fbNativeVideo: null/);
   assert.match(appjs, /fbStreamFailed: new Set\(\)/);
-  assert.match(appjs, /tryFacebookStreamUpgrade\(item, state\.fbStreamSeq\);/);
+  assert.match(appjs, /tryFacebookStreamUpgrade\(item, state\.fbStreamSeq, prepared\);/);
   assert.match(appjs, /item\.media_type === "video" \|\| item\.media_type === "reel"/);
   assert.match(appjs, /!embed\.includes\("\/plugins\/post\.php"\)/);
   assert.match(appjs, /api\(`\/api\/items\/\$\{item\.id\}\/stream`\)/);
 });
 
 test("native Facebook video is muted, inline, autoplaying, and reports playback", () => {
-  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq\)/);
+  assert.match(appjs, /function mountFacebookNativeVideo\(item, url, seq, preparedVideo = null\)/);
   assert.match(appjs, /video\.muted = true;/);
   assert.match(appjs, /video\.autoplay = true;/);
   assert.match(appjs, /video\.playsInline = true;/);
