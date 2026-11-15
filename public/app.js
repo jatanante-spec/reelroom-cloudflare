@@ -22,6 +22,7 @@
     useBackup: null,
     playerView: "big",   // big | details — v13 opens big by default
     moreOpen: false,
+    controlsHiddenByUser: false,
     backGuardOpen: false,
     lastBackPress: 0,
     playerHistoryActive: false,
@@ -831,18 +832,42 @@
       shell.appendChild(z);
     }
   }
-  function showFsControls() {
+  function syncControlsToggle() {
+    const b = $("#fsControlsToggle"); if (!b) return;
+    const hidden = state.controlsHiddenByUser || !!$("#playerShell")?.classList.contains("fs-idle");
+    b.textContent = hidden ? "Show controls" : "Hide controls";
+    b.setAttribute("aria-label", hidden ? "Show ReelRoom controls" : "Hide ReelRoom controls");
+    b.setAttribute("aria-pressed", String(hidden));
+  }
+  function showFsControls(force = false) {
     const shell = $("#playerShell");
     if (!shell) return;
-    shell.classList.remove("fs-idle");
+    if (state.controlsHiddenByUser && !force) return;
+    if (force) state.controlsHiddenByUser = false;
+    shell.classList.remove("fs-idle", "fs-manual-hidden");
+    syncControlsToggle();
     clearTimeout(fsIdleTimer);
     // v13: on TV the controls stay visible — the remote is the primary input.
     if (inFullscreen() && !tvEnabled() && !state.moreOpen && $("#orgModal").hidden) fsIdleTimer = setTimeout(hideFsControls, 3500);
+    layoutSwipeZones();
   }
-  function hideFsControls() {
+  function hideFsControls(force = false) {
     clearTimeout(fsIdleTimer); fsIdleTimer = null;
     const shell = $("#playerShell");
-    if (shell && inFullscreen() && !tvEnabled() && !state.moreOpen) shell.classList.add("fs-idle");
+    if (shell && inFullscreen() && (force || !tvEnabled()) && !state.moreOpen) shell.classList.add("fs-idle");
+    syncControlsToggle();
+    layoutSwipeZones();
+  }
+  function toggleFsControls() {
+    if (state.controlsHiddenByUser || $("#playerShell")?.classList.contains("fs-idle")) {
+      showFsControls(true);
+    } else {
+      state.controlsHiddenByUser = true;
+      const shell = $("#playerShell"); if (shell) shell.classList.add("fs-manual-hidden");
+      hideFsControls(true);
+      syncControlsToggle();
+    }
+    layoutSwipeZones();
   }
   function syncFsChrome() {
     const shell = $("#playerShell");
@@ -915,7 +940,8 @@
       return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
     }
     if (state.playerView === "big" && inFullscreen()) {
-      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#playerOrgBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
+      if (state.controlsHiddenByUser) return [$("#fsControlsToggle")].filter(isVisible);
+      return ["#fsExitBtn", "#fsControlsToggle", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#playerOrgBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
         .map((s) => $(s)).filter(isVisible);
     }
     return [];
@@ -1280,6 +1306,9 @@
   // We measure the real video box and leave two tap-through holes: the centre
   // Play button and the strip along the video's bottom edge (speaker/pause/seek).
   function swipeControlBarHeight() {
+    // When the app controls are tucked away, leave a generous strip for the
+    // underlying player's controls, including its fullscreen button.
+    if ($("#playerShell")?.classList.contains("fs-idle")) return state.fbNativeVideo ? 120 : 100;
     if (state.fbNativeVideo) return 56;
     const p = state.activePlatform;
     if (p === "facebook") return 64;
@@ -1398,6 +1427,7 @@
   }
 
   function renderPlayer(item) {
+    $("#playerShell").classList.toggle("player-has-video", !isPostItem(item));
     renderPlayerOrg(item);
     $("#playerTitle").textContent = displayTitle(item);
     // v38: Facebook's post embed leaves the caption outside the picture —
@@ -1579,7 +1609,9 @@
     hideBackGuard();
     if (inFullscreen()) exitFullscreen();
     const shell = $("#playerShell");
-    if (shell) shell.classList.remove("pseudo-fs", "details-view", "more-open", "fs-idle", "guard-open");
+    if (shell) shell.classList.remove("pseudo-fs", "details-view", "more-open", "fs-idle", "fs-manual-hidden", "player-has-video", "guard-open");
+    state.controlsHiddenByUser = false;
+    syncControlsToggle();
     state.playerView = "big";
     $("#playerModal").hidden = true;
     $("#playerStage").innerHTML = "";
@@ -2225,7 +2257,8 @@
     state.playerView = "details";
     closeFsMore();
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
-    shell.classList.remove("pseudo-fs", "more-open", "fs-idle");
+    shell.classList.remove("pseudo-fs", "more-open", "fs-idle", "fs-manual-hidden");
+    state.controlsHiddenByUser = false; syncControlsToggle();
     shell.classList.add("details-view");
     $("#playerModal").classList.toggle("theatre", !!prefs.theatre);
     updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60);
@@ -3386,6 +3419,7 @@
     stampVersion();
     ensurePlayerActionButtons();
     $("#closePlayerBtn").addEventListener("click", closePlayer);
+    $("#fsControlsToggle").addEventListener("click", (e) => { e.stopPropagation(); toggleFsControls(); });
     $("#playerOrgBtn").addEventListener("click", (e) => {
       e.stopPropagation();
       const item = currentList()[state.playerIndex];
@@ -3539,8 +3573,19 @@
     // reveal the fullscreen controls on movement / tap, and when the video steals focus
     const shellEl = $("#playerShell");
     if (shellEl) {
-      shellEl.addEventListener("pointermove", () => { if (inFullscreen()) showFsControls(); });
-      shellEl.addEventListener("pointerdown", () => { if (inFullscreen()) showFsControls(); });
+      const shouldReveal = (e) => {
+        if (e.target && e.target.closest && e.target.closest("#fsControlsToggle")) return false;
+        // Do not bring app buttons back on top of the video's own bottom
+        // controls while the viewer is trying to tap them.
+        if (shellEl.classList.contains("fs-idle")) {
+          const box = document.getElementById("stageBox") || document.getElementById("igWindow");
+          const r = box && box.getBoundingClientRect();
+          if (r && e.clientX >= r.left && e.clientX <= r.right && e.clientY <= r.bottom && e.clientY >= r.bottom - swipeControlBarHeight()) return false;
+        }
+        return true;
+      };
+      shellEl.addEventListener("pointermove", (e) => { if (inFullscreen() && shouldReveal(e)) showFsControls(); });
+      shellEl.addEventListener("pointerdown", (e) => { if (inFullscreen() && shouldReveal(e)) showFsControls(); });
       // v17: vertical swipe navigation. Embedded iframes swallow touches, so the
       // default listens on the shell/edge strips; "anywhere" adds a gesture layer.
       shellEl.addEventListener("touchstart", (e) => {
@@ -3568,7 +3613,9 @@
         if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.4) swipeStep(dy < 0 ? 1 : -1);
       }, { passive: true });
     }
-    window.addEventListener("blur", () => { if (inFullscreen()) showFsControls(); });
+    window.addEventListener("blur", () => {
+      if (inFullscreen() && !$("#playerShell")?.classList.contains("fs-idle")) showFsControls();
+    });
 
     // the Facebook explanation is clamped on phones — tap it to read the rest
     const noteEl = document.querySelector(".embed-note");

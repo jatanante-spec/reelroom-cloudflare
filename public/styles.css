@@ -1200,3 +1200,21 @@ body.tv-mode .player-shell:fullscreen .player-organize, body.tv-mode .player-she
 .player-shell > #orgModal { position: absolute; inset: 0; z-index: 100; }
 .org-actions { display: flex; gap: 8px; margin-top: 16px; }
 .org-actions .btn { flex: 1; min-height: 44px; }
+
+/* A small explicit escape hatch for the video's own controls. */
+.fs-controls-toggle { display: none; }
+.player-shell:fullscreen .fs-controls-toggle, .player-shell.pseudo-fs .fs-controls-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  position: absolute; right: 10px; top: 10px; z-index: 11;
+  min-height: 44px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.35);
+  border-radius: 999px; background: rgba(18,20,25,.88); color: #fff;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.fs-controls-toggle:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+.player-shell.more-open .fs-controls-toggle, .player-shell.guard-open .fs-controls-toggle { display: none; }
+/* Captions on picture posts stay readable during auto-hide. For videos,
+   the caption and app overlays leave the player's bottom controls uncovered. */
+.player-shell.fs-idle.player-has-video:not(.counting) .player-post-text,
+.player-shell.fs-manual-hidden:not(.counting) .player-post-text { opacity: 0; pointer-events: none; }
+.player-shell.fs-idle .fs-hit-bottom { pointer-events: none; }
+.player-shell.fs-manual-hidden:not(.counting) .fs-exit { opacity: 0; pointer-events: none; }
