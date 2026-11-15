@@ -1015,16 +1015,19 @@ body.search-open .top-context { display: none; }
   display: grid; place-items: center; cursor: pointer;
 }
 .org-tool:focus-visible { outline: 3px solid #4b8dff; outline-offset: 2px; }
+/* Selection markers belong to each grid card, above the thumbnail. */
+.group-grid .card { position: relative; }
 .selbox {
-  position: absolute; top: 8px; left: 8px; z-index: 3;
-  width: 26px; height: 26px; border-radius: 8px; border: 2px solid #fff;
-  background: rgba(0,0,0,.45); color: #fff; display: none; place-items: center;
-  font-size: 15px; font-weight: 900;
+  position: absolute; top: 9px; left: 9px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff;
+  background: rgba(0,0,0,.72); color: transparent; display: none; place-items: center;
+  font-size: 22px; line-height: 1; font-weight: 900;
+  box-shadow: 0 2px 8px rgba(0,0,0,.7); pointer-events: none;
 }
 body.selecting .selbox { display: grid; }
 body.selecting .card .badge { visibility: hidden; }
-.card.selected { border-color: #4b8dff; box-shadow: 0 0 0 2px rgba(75,141,255,.4); }
-.card.selected .selbox { background: #4b8dff; border-color: #4b8dff; }
+body.selecting .group-grid .card.selected { box-shadow: 0 0 0 3px #69a5ff; }
+body.selecting .card.selected .selbox { background: #286fdd; color: #fff; }
 body.selecting .org-tool, body.selecting .card-actions { display: none; }
 
 .bulk-bar {

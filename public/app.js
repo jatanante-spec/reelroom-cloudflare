@@ -404,7 +404,7 @@
   function renderGrid(list) {
     const grid = $("#grid");
     const cardHtml = (item) => `
-      <article class="card ${state.lastAddedId === item.id ? "just-added" : ""} ${state.selected.has(item.id) ? "selected" : ""}" data-id="${item.id}" tabindex="0" role="button" aria-label="Play ${esc(displayTitle(item))}">
+      <article class="card ${state.lastAddedId === item.id ? "just-added" : ""} ${state.selected.has(item.id) ? "selected" : ""}" data-id="${item.id}" tabindex="0" role="button" ${state.selecting ? `aria-pressed="${state.selected.has(item.id)}" aria-label="Select ${esc(displayTitle(item))}"` : `aria-label="Play ${esc(displayTitle(item))}"`} >
         <span class="selbox" aria-hidden="true">✓</span>
         <button class="org-tool" data-act="org" title="Organize (collection / tags)" aria-label="Organize">🏷</button>
         ${thumbHtml(item)}
