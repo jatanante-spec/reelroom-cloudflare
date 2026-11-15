@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-sound-icon">
+<link rel="stylesheet" href="styles.css?v=38-player-organize">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -174,6 +174,10 @@
         <span>Caption</span><span class="chev" aria-hidden="true">▾</span>
       </button>
       <div class="post-text-body" id="playerPostTextBody"></div>
+    </div>
+    <div class="player-organize" id="playerOrganize">
+      <div class="player-org-summary" id="playerOrgSummary" aria-label="Current collection and tags"></div>
+      <button class="player-org-button" id="playerOrgBtn" type="button" aria-label="Organize this video">🏷 Organize</button>
     </div>
     <div class="player-stage" id="playerStage"></div>
     <!-- v18: "swipe anywhere" uses four gesture zones around a centre hole.
@@ -442,7 +446,10 @@
     <button type="button" class="btn btn-small org-clear" id="orgClearTagsBtn" hidden>Clear all tags</button>
     <div class="org-inline"><input id="orgNewTag" placeholder="New tag…"><button class="btn btn-small" id="orgAddTagBtn">Add</button></div>
     <div class="org-suggest" id="orgSuggest"></div>
-    <button class="btn btn-primary btn-block" id="orgSaveBtn" style="margin-top:16px">Save</button>
+    <div class="org-actions">
+      <button class="btn" type="button" data-close="orgModal">Cancel</button>
+      <button class="btn btn-primary" id="orgSaveBtn" type="button">Save</button>
+    </div>
   </div>
 </div>
 
@@ -591,6 +598,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-sound-icon"></script>
+<script src="app.js?v=38-player-organize"></script>
 </body>
 </html>

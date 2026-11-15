@@ -40,9 +40,9 @@ test("one video can still be edited exactly (tags can be taken off)", () => {
 
 test("the organize sheet starts from 'change nothing' when many videos are picked", () => {
   const open = appjs.slice(appjs.indexOf("function openOrg(ids)"));
-  assert.match(open.slice(0, 900), /state\.orgColTouched = ids\.length === 1;/);
-  assert.match(open.slice(0, 900), /state\.orgTags = new Set\(ids\.length === 1 \? \(first\?\.tags \|\| \[\]\) : \[\]\);/);
-  assert.match(open.slice(0, 900), /state\.orgSingle = ids\.length === 1;/);
+  assert.match(open.slice(0, 1600), /state\.orgColTouched = ids\.length === 1;/);
+  assert.match(open.slice(0, 1600), /state\.orgTags = new Set\(ids\.length === 1 \? \(first\?\.tags \|\| \[\]\) : \[\]\);/);
+  assert.match(open.slice(0, 1600), /state\.orgSingle = ids\.length === 1;/);
 });
 
 test("the sheet says in plain words what Save is going to do", () => {

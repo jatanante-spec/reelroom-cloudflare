@@ -15,6 +15,7 @@
     search: "",
     sort: "newest",
     playerIndex: -1,
+    playerQueue: null, // keep the open viewing order stable when organizing changes a filter
     editingId: null,
     pollTimer: null,
     fbUseAlt: false,
@@ -490,7 +491,13 @@
   }
 
   // ---------- player ----------
-  function currentList() { return filtered(); }
+  function currentList() {
+    if (!$("#playerModal").hidden && state.playerQueue) {
+      const byId = new Map(state.items.map((item) => [item.id, item]));
+      return state.playerQueue.map((id) => byId.get(id)).filter(Boolean);
+    }
+    return filtered();
+  }
 
   function openPlayer(id, fromRail) {
     let list = currentList();
@@ -830,7 +837,7 @@
     shell.classList.remove("fs-idle");
     clearTimeout(fsIdleTimer);
     // v13: on TV the controls stay visible — the remote is the primary input.
-    if (inFullscreen() && !tvEnabled() && !state.moreOpen) fsIdleTimer = setTimeout(hideFsControls, 3500);
+    if (inFullscreen() && !tvEnabled() && !state.moreOpen && $("#orgModal").hidden) fsIdleTimer = setTimeout(hideFsControls, 3500);
   }
   function hideFsControls() {
     clearTimeout(fsIdleTimer); fsIdleTimer = null;
@@ -908,7 +915,7 @@
       return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
     }
     if (state.playerView === "big" && inFullscreen()) {
-      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
+      return ["#fsExitBtn", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#playerOrgBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
         .map((s) => $(s)).filter(isVisible);
     }
     return [];
@@ -1265,7 +1272,7 @@
     const layer = $("#swipeLayer"); if (!layer) return;
     const crop = $("#cropAdjust");
     const on = prefs.swipeNav === "anywhere" && !$("#playerModal").hidden &&
-      state.playerView === "big" && !state.moreOpen && !state.backGuardOpen && (!crop || crop.hidden);
+      state.playerView === "big" && !state.moreOpen && !state.backGuardOpen && $("#orgModal").hidden && (!crop || crop.hidden);
     layer.hidden = !on;
     if (on) layoutSwipeZones();
   }
@@ -1371,14 +1378,27 @@
     const open = !!modal && !modal.hidden;
     const bar = $("#fsBar");
     const panel = $("#playerPostText");
-    const barH = open && bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+    const barH = open && bar && !document.body.classList.contains("tv-mode") ? Math.round(bar.getBoundingClientRect().height) : 0;
     const panelH = open && panel && !panel.hidden ? Math.round(panel.getBoundingClientRect().height) : 0;
-    // set on the page, so the toast can also keep clear of the caption
+    const org = $("#playerOrganize");
+    const orgH = open && org ? Math.round(org.getBoundingClientRect().height) : 0;
+    // Set on the page so the caption, sound and toast can stay apart.
     document.body.style.setProperty("--fs-bottom", barH + "px");
     document.body.style.setProperty("--caption-h", panelH + "px");
+    document.body.style.setProperty("--organize-h", orgH + "px");
+  }
+
+  function renderPlayerOrg(item) {
+    const wrap = $("#playerOrgSummary");
+    if (!wrap || !item) return;
+    const collection = item.collection ? `<span class="player-org-chip collection">📁 ${esc(item.collection)}</span>` : "";
+    const tags = (item.tags || []).map((tag) => `<span class="player-org-chip">#${esc(tag)}</span>`).join("");
+    wrap.innerHTML = collection + tags || '<span class="player-org-empty">No collection or tags yet</span>';
+    wrap.title = [item.collection ? `Collection: ${item.collection}` : "No collection", ...(item.tags || []).map((t) => `#${t}`)].join(" · ");
   }
 
   function renderPlayer(item) {
+    renderPlayerOrg(item);
     $("#playerTitle").textContent = displayTitle(item);
     // v38: Facebook's post embed leaves the caption outside the picture —
     // show it here instead.
@@ -1566,6 +1586,7 @@
     document.body.style.overflow = "";
     syncCaptionLayout();
     state.playerIndex = -1;
+    state.playerQueue = null;
     state.igActive = false;
     resetBridge("");
     clearTimeout(sound.confirmTimer);
@@ -1585,6 +1606,7 @@
   }
 
   function stepPlayer(delta) {
+    if (!$("#orgModal").hidden) return;
     const list = currentList();
     // v37: links are not videos — the player steps over them
     let next = state.playerIndex + delta;
@@ -1899,8 +1921,18 @@
     toast(every ? "Selection cleared" : `Selected ${list.length} video${list.length === 1 ? "" : "s"}`);
   }
 
+  const orgModalHome = $("#orgModal").parentNode;
   function openOrg(ids) {
     if (!ids || !ids.length) return;
+    const orgModal = $("#orgModal");
+    const playerOpen = !$("#playerModal").hidden;
+    if (playerOpen) {
+      // Keep this viewing queue stable if editing removes the video from the
+      // active collection/tag filter. Keep the player running behind the sheet.
+      if (!state.playerQueue) state.playerQueue = currentList().map((item) => item.id);
+      cancelCountdown();
+      $("#playerShell").appendChild(orgModal); // works in true fullscreen too
+    } else if (orgModal.parentNode !== orgModalHome) orgModalHome.appendChild(orgModal);
     state.orgIds = ids;
     const first = state.items.find((i) => i.id === ids[0]);
     // v36: several videos → only what you tap gets changed. One video → the
@@ -1915,9 +1947,14 @@
     renderOrg();
     try { window.getSelection && window.getSelection().removeAllRanges(); } catch {}
     $("#orgModal").hidden = false;
+    clearTimeout(fsIdleTimer);
+    updateSwipeLayer();
     updateDock(); updateTopbar();
   }
   function renderOrg() {
+    const active = document.activeElement;
+    const focusCol = active && active.hasAttribute("data-col") ? active.dataset.col : null;
+    const focusTag = active && active.hasAttribute("data-tag") ? active.dataset.tag : null;
     const colWrap = $("#orgColChips"), tagWrap = $("#orgTagChips");
     if (colWrap) {
       // v27: include the draft collection so a newly created name shows as a selected chip.
@@ -1946,6 +1983,12 @@
         renderOrg();
       }));
     }
+    // Keep remote focus on the same chip when the choices are redrawn.
+    if (colWrap) colWrap.querySelectorAll("[data-col]").forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))));
+    if (tagWrap) tagWrap.querySelectorAll("[data-tag]").forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))));
+    const restored = focusCol !== null ? [...colWrap.querySelectorAll("[data-col]")].find((b) => b.dataset.col === focusCol)
+      : focusTag !== null ? [...tagWrap.querySelectorAll("[data-tag]")].find((b) => b.dataset.tag === focusTag) : null;
+    if (restored) restored.focus({ preventScroll: true });
     // v36: say plainly what Save is about to do.
     const what = $("#orgWhat");
     if (what) {
@@ -2020,12 +2063,15 @@
             if (idx >= 0) state.items[idx] = updated;
           } catch {}
         }
-        render(); toast("Reverted");
+        render();
+        if (!$("#playerModal").hidden) renderPlayerOrg(currentList()[state.playerIndex]);
+        toast("Reverted");
       },
     };
     if (!failed.length) {
       $("#orgModal").hidden = true;
       if (state.selecting) setSelecting(false); else render();
+      if (!$("#playerModal").hidden) renderPlayerOrg(currentList()[state.playerIndex]);
       toast(`Saved ${ids.length} video${ids.length === 1 ? "" : "s"}`, ids.length ? undoSaved : undefined);
       return;
     }
@@ -2508,6 +2554,7 @@
   }
   function startCountdown(seconds) {
     cancelCountdown();
+    if (!$("#orgModal").hidden) return; // never move away while organizing
     const list = currentList();
     if (state.playerIndex >= list.length - 1) { setUpnextStatus("End of this list."); return; }
     let n = seconds;
@@ -3339,6 +3386,11 @@
     stampVersion();
     ensurePlayerActionButtons();
     $("#closePlayerBtn").addEventListener("click", closePlayer);
+    $("#playerOrgBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const item = currentList()[state.playerIndex];
+      if (item) openOrg([item.id]);
+    });
     $("#prevBtn").addEventListener("click", () => stepPlayer(-1));
     $("#nextBtn").addEventListener("click", () => stepPlayer(1));
     const playerActions = document.querySelector(".player-actions");
@@ -3493,7 +3545,8 @@
       // default listens on the shell/edge strips; "anywhere" adds a gesture layer.
       shellEl.addEventListener("touchstart", (e) => {
         if ($("#playerModal").hidden || state.playerView !== "big" || prefs.swipeNav === "off") return;
-        if (state.moreOpen || state.backGuardOpen) return;
+        if (state.moreOpen || state.backGuardOpen || !$("#orgModal").hidden) { state.swipeTouch = null; return; }
+        if (e.target && e.target.closest && e.target.closest(".player-organize")) { state.swipeTouch = null; return; }
         const t = e.touches[0]; if (!t) return;
         const rect = shellEl.getBoundingClientRect();
         const x = t.clientX - rect.left, y = t.clientY - rect.top;
@@ -3554,6 +3607,12 @@
     });
     try {
       const moGuard = new MutationObserver(() => {
+        const org = $("#orgModal");
+        if (org && org.hidden && org.parentNode !== orgModalHome) {
+          orgModalHome.appendChild(org);
+          if (!$("#playerModal").hidden) showFsControls();
+        }
+        updateSwipeLayer();
         const open = anyGuardModal();
         // v32: move focus into a newly opened popup; restore it when the last one closes.
         const openId = topGuardModal();
@@ -3630,6 +3689,22 @@
         else if (!$("#addModal").hidden) $("#addModal").hidden = true;
         else if (!$("#playerModal").hidden) closePlayer();
         else if (tvEnabled() && document.activeElement && document.activeElement.closest(".card")) document.activeElement.blur();
+        return;
+      }
+      // Modal controls own D-pad and Back while a sheet is open; never let
+      // those keys change the video behind the organizer.
+      const guarded = topGuardModal();
+      if (guarded) {
+        if (!typing && e.key === "Backspace") { e.preventDefault(); document.getElementById(guarded).hidden = true; return; }
+        if (!typing && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+          const choices = focusablesIn(document.getElementById(guarded));
+          if (choices.length) {
+            e.preventDefault();
+            const delta = (e.key === "ArrowUp" || e.key === "ArrowLeft") ? -1 : 1;
+            const i = choices.indexOf(document.activeElement);
+            choices[(i + delta + choices.length) % choices.length].focus();
+          }
+        }
         return;
       }
       if (typing) return;

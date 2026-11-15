@@ -1177,3 +1177,26 @@ h1, h2, h3, .card-title, .org-sub, .sheet, .modal-head {
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+
+/* Organize the current video without leaving the player. */
+.player-organize { display: flex; gap: 8px; align-items: center; padding: 6px 12px; min-width: 0; background: var(--bg-elev); }
+.player-org-summary { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x; }
+.player-org-summary::-webkit-scrollbar { display: none; }
+.player-org-chip { flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #535b69; border-radius: 999px; padding: 5px 8px; background: #252b34; color: #f1f2f5; font-size: 12px; }
+.player-org-chip.collection { background: #3c3039; border-color: #775561; }
+.player-org-empty { color: #c1c5cd; font-size: 12px; white-space: nowrap; }
+.player-org-button { flex: none; min-height: 44px; padding: 7px 10px; border-radius: 10px; color: #fff; background: #302a31; border: 1px solid #72616c; font-weight: 700; cursor: pointer; }
+.player-org-button:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+.player-shell:fullscreen .player-organize, .player-shell.pseudo-fs .player-organize {
+  position: absolute; left: 0; right: 0; bottom: calc(var(--fs-bottom, 0px) + var(--caption-h, 0px));
+  z-index: 9; background: rgba(15,17,23,.88); transition: opacity .22s ease;
+}
+.player-shell.fs-idle:not(.counting) .player-organize { opacity: 0; pointer-events: none; }
+.player-shell.more-open .player-organize { opacity: 0; pointer-events: none; }
+.player-shell:fullscreen .sound-helper:not([hidden]), .player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: calc(86px + var(--caption-h, 0px) + var(--organize-h, 0px)); }
+.toast, body.standalone .toast { bottom: calc(140px + var(--caption-h, 0px) + var(--organize-h, 0px) + env(safe-area-inset-bottom, 0px)); }
+body.tv-mode .player-shell:fullscreen .player-organize, body.tv-mode .player-shell.pseudo-fs .player-organize { left: 96px; right: 96px; bottom: calc(14px + var(--caption-h, 0px)); border-radius: 12px; }
+/* When opened from the player this sheet is moved inside the fullscreen shell. */
+.player-shell > #orgModal { position: absolute; inset: 0; z-index: 100; }
+.org-actions { display: flex; gap: 8px; margin-top: 16px; }
+.org-actions .btn { flex: 1; min-height: 44px; }
