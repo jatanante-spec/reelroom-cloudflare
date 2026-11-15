@@ -3447,6 +3447,9 @@
         const edge = x < 44 || x > rect.width - 44 || y < 80 || y > rect.height - 110;
         const targetOk = prefs.swipeNav === "anywhere" ||
           (e.target && e.target.closest && e.target.closest(".fs-hit, .fs-bar, .player-top, .fs-exit, .sound-helper, .swipe-layer"));
+        // Caption gestures always belong to the caption, including at its ends.
+        state.swipeTouch = null;
+        if (e.target && e.target.closest && e.target.closest(".player-post-text")) return;
         if (prefs.swipeNav === "edges" && !edge && !targetOk) return;
         state.swipeTouch = { x: t.clientX, y: t.clientY, t: Date.now() };
       }, { passive: true });
