@@ -816,6 +816,7 @@
 
   // ---- fullscreen chrome: tap an edge to reveal, auto-hide when idle ----
   let fsIdleTimer = null;
+  function focusFullscreen() { return document.fullscreenElement === $("#playerShell"); }
   function ensureFsChrome() {
     const shell = $("#playerShell");
     if (!shell || shell.querySelector(".fs-hit-top")) return;
@@ -823,11 +824,12 @@
       const z = document.createElement("div");
       z.className = "fs-hit fs-hit-" + pos;
       z.setAttribute("aria-hidden", "true");
-      z.addEventListener("pointerenter", () => showFsControls());
+      z.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" && !focusFullscreen()) showFsControls(); });
       z.addEventListener("click", (e) => {
         e.stopPropagation();
-        if ($("#playerShell").classList.contains("fs-idle")) showFsControls();
-        else hideFsControls();
+        if (Date.now() - (state.lastSwipeAt || 0) < 500) return;
+        if ($("#playerShell").classList.contains("fs-idle")) showFsControls(true);
+        else hideFsControls(true);
       });
       shell.appendChild(z);
     }
@@ -847,14 +849,18 @@
     shell.classList.remove("fs-idle", "fs-manual-hidden");
     syncControlsToggle();
     clearTimeout(fsIdleTimer);
-    // v13: on TV the controls stay visible — the remote is the primary input.
-    if (inFullscreen() && !tvEnabled() && !state.moreOpen && $("#orgModal").hidden) fsIdleTimer = setTimeout(hideFsControls, 3500);
+    // In true ReelRoom fullscreen, even TV chrome can fade; remote keys reveal it.
+    // Keep the established TV behaviour in the ordinary big view.
+    if (inFullscreen() && (!tvEnabled() || focusFullscreen()) && !state.moreOpen && $("#orgModal").hidden) fsIdleTimer = setTimeout(hideFsControls, 3500);
     layoutSwipeZones();
   }
   function hideFsControls(force = false) {
     clearTimeout(fsIdleTimer); fsIdleTimer = null;
     const shell = $("#playerShell");
-    if (shell && inFullscreen() && (force || !tvEnabled()) && !state.moreOpen) shell.classList.add("fs-idle");
+    if (shell && inFullscreen() && (force || !tvEnabled() || focusFullscreen()) && !state.moreOpen && $("#orgModal").hidden) {
+      if (focusFullscreen() && shell.contains(document.activeElement) && document.activeElement !== shell && document.activeElement.tagName !== "IFRAME" && document.activeElement.tagName !== "VIDEO") shell.focus({ preventScroll: true });
+      shell.classList.add("fs-idle");
+    }
     syncControlsToggle();
     layoutSwipeZones();
   }
@@ -872,7 +878,7 @@
   function syncFsChrome() {
     const shell = $("#playerShell");
     if (!shell) return;
-    if (inFullscreen() && state.playerView === "big") { ensureFsChrome(); showFsControls(); syncFsMore(); }
+    if (inFullscreen() && state.playerView === "big") { ensureFsChrome(); if (!(focusFullscreen() && shell.classList.contains("fs-idle"))) showFsControls(); syncFsMore(); }
     else {
       clearTimeout(fsIdleTimer); fsIdleTimer = null;
       shell.classList.remove("fs-idle", "counting", "more-open");
@@ -1362,7 +1368,7 @@
     if (target < 0) { flashSwipeHint("Start of list"); return; }
     if (target >= list.length) { flashSwipeHint("End of list"); return; }
     flashSwipeHint(dir > 0 ? "Next video" : "Previous video");
-    showFsControls();
+    if (!focusFullscreen()) showFsControls();
     stepPlayer(target - state.playerIndex);
   }
 
@@ -3582,7 +3588,15 @@
     on("#caDown", () => nudgeInstagram("dy", 1));
     on("#caReset", () => { nudgeInstagram("reset", 0); toast("Picture adjustment reset"); });
 
-    document.addEventListener("fullscreenchange", () => { updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60); setTimeout(layoutSwipeZones, 80); });
+    document.addEventListener("fullscreenchange", () => {
+      const shell = $("#playerShell");
+      if (shell) shell.classList.toggle("fs-focus-mode", focusFullscreen());
+      if (focusFullscreen()) {
+        state.controlsHiddenByUser = false;
+        showFullscreenStatus("Tap the picture or top edge to show controls. On TV, press an arrow.");
+      }
+      updateFsBtn(); syncFsChrome(); setTimeout(refitStage, 60); setTimeout(layoutSwipeZones, 80);
+    });
 
     // reveal the fullscreen controls on movement / tap, and when the video steals focus
     const shellEl = $("#playerShell");
@@ -3591,15 +3605,24 @@
         if (e.target && e.target.closest && e.target.closest("#fsControlsToggle, #fsShellFullscreenBtn")) return false;
         // Do not bring app buttons back on top of the video's own bottom
         // controls while the viewer is trying to tap them.
-        if (shellEl.classList.contains("fs-idle")) {
+        if (focusFullscreen() || shellEl.classList.contains("fs-idle")) {
           const box = document.getElementById("stageBox") || document.getElementById("igWindow");
           const r = box && box.getBoundingClientRect();
           if (r && e.clientX >= r.left && e.clientX <= r.right && e.clientY <= r.bottom && e.clientY >= r.bottom - swipeControlBarHeight()) return false;
         }
         return true;
       };
-      shellEl.addEventListener("pointermove", (e) => { if (inFullscreen() && shouldReveal(e)) showFsControls(); });
-      shellEl.addEventListener("pointerdown", (e) => { if (inFullscreen() && shouldReveal(e)) showFsControls(); });
+      shellEl.addEventListener("pointermove", (e) => { if (inFullscreen() && !focusFullscreen() && shouldReveal(e)) showFsControls(); });
+      shellEl.addEventListener("pointerdown", (e) => { if (inFullscreen() && !focusFullscreen() && shouldReveal(e)) showFsControls(); });
+      // A tap on the exposed stage toggles app chrome without blocking the
+      // video's own controls. Cross-site iframe taps cannot bubble to us;
+      // the top edge and remote remain available as fallbacks.
+      shellEl.addEventListener("click", (e) => {
+        if (!focusFullscreen() || state.moreOpen || state.backGuardOpen || !$("#orgModal").hidden || Date.now() - (state.lastSwipeAt || 0) < 500) return;
+        if (e.target.closest && e.target.closest("button, a, input, select, .player-post-text, .player-organize, .fs-bar, .fs-more, .crop-adjust, .fs-hit")) return;
+        if (!shouldReveal(e)) return;
+        if (shellEl.classList.contains("fs-idle")) showFsControls(true); else hideFsControls(true);
+      });
       // v17: vertical swipe navigation. Embedded iframes swallow touches, so the
       // default listens on the shell/edge strips; "anywhere" adds a gesture layer.
       shellEl.addEventListener("touchstart", (e) => {
@@ -3624,7 +3647,7 @@
         const t = e.changedTouches[0]; if (!t) return;
         const dy = t.clientY - s.y, dx = t.clientX - s.x;
         if (Date.now() - s.t > 900) return;
-        if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.4) swipeStep(dy < 0 ? 1 : -1);
+        if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.lastSwipeAt = Date.now(); swipeStep(dy < 0 ? 1 : -1); }
       }, { passive: true });
     }
     window.addEventListener("blur", () => {
@@ -3771,6 +3794,9 @@
       if (typing) return;
       if (sidebarOpen() && e.key === "Backspace") { e.preventDefault(); closeSidebar(); return; }
       if (e.key === "Home" && $("#playerModal").hidden && !sidebarOpen()) { e.preventDefault(); scrollToTop(); return; }
+      if (focusFullscreen() && $("#playerShell")?.classList.contains("fs-idle") && !state.moreOpen && !state.backGuardOpen && ["ArrowUp", "ArrowDown", "Enter", " ", "Tab"].includes(e.key)) {
+        e.preventDefault(); showFsControls(true); if (e.key !== "Tab") focusBigDefault(); else moveFsFocus(1); return;
+      }
       if (inFullscreen()) showFsControls();
       if (e.key === "/") { e.preventDefault(); closeSidebar(); openTopSearch(); return; }
       if (!$("#playerModal").hidden) {

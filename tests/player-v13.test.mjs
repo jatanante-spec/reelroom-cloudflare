@@ -41,8 +41,8 @@ test("TV mode moves the primary controls into the side space", () => {
   assert.match(css, /body\.tv-mode \.player-shell\.pseudo-fs #fsNextBtn/);
   assert.match(css, /body\.tv-mode \.player-shell\.pseudo-fs #fsMoreBtn/);
   assert.match(css, /body\.tv-mode \.player-shell\.pseudo-fs \.fs-more\.open/);
-  // TV controls should not auto-hide while the remote is the primary input
-  assert.match(appjs, /inFullscreen\(\) && !tvEnabled\(\) && !state\.moreOpen/);
+  // Big-view TV controls remain visible; true fullscreen may auto-hide and is remote-recoverable.
+  assert.match(appjs, /inFullscreen\(\) && \(!tvEnabled\(\) \|\| focusFullscreen\(\)\) && !state\.moreOpen/);
 });
 
 test("the old detailed view is still reachable on T", () => {
