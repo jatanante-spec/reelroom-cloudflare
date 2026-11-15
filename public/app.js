@@ -140,6 +140,7 @@
     // details. Once it has been looked for, it is never looked for again —
     // only an old copy of the details is refreshed, weeks later.
     if (isPostItem(item)) {
+      if (item.platform === "facebook" && !item.post_image_checked) return true;
       if (!item.post_text_fetched) return true;
       if (!item.metadata_fetched_at) return false;
       const at = Date.parse(item.metadata_fetched_at);
