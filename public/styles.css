@@ -1218,3 +1218,8 @@ body.tv-mode .player-shell:fullscreen .player-organize, body.tv-mode .player-she
 .player-shell.fs-manual-hidden:not(.counting) .player-post-text { opacity: 0; pointer-events: none; }
 .player-shell.fs-idle .fs-hit-bottom { pointer-events: none; }
 .player-shell.fs-manual-hidden:not(.counting) .fs-exit { opacity: 0; pointer-events: none; }
+/* Long library titles must not widen the phone viewport and push player
+   controls off the visible screen. */
+.group-grid > .card, .search-wrap { min-width: 0; }
+.card-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-meta .mini-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
