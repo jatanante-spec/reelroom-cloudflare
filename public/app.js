@@ -1367,7 +1367,6 @@
     }
     if (target < 0) { flashSwipeHint("Start of list"); return; }
     if (target >= list.length) { flashSwipeHint("End of list"); return; }
-    flashSwipeHint(dir > 0 ? "Next video" : "Previous video");
     if (!focusFullscreen()) showFsControls();
     stepPlayer(target - state.playerIndex);
   }
