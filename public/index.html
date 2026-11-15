@@ -32,11 +32,17 @@
   <div class="topbar-actions">
     <button class="icon-btn" id="topSearchBtn" title="Search" aria-label="Search">🔍</button>
     <button class="icon-btn" id="headTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
-    <button class="icon-btn" id="tvModeBtn" title="TV / remote mode" aria-pressed="false">📺</button>
     <button class="btn btn-primary" id="addBtn">+ Add links</button>
     <div class="menu-wrap">
       <button class="icon-btn" id="moreBtn" aria-label="More options">⋮</button>
+      <!-- v34: the controls that used to sit above the videos now live here -->
       <div class="dropdown" id="moreMenu" hidden>
+        <button class="btn btn-small" id="selectBtn" aria-pressed="false">Select</button>
+        <button class="btn btn-small" id="compactBtn" aria-pressed="false" title="Compact density">Compact</button>
+        <button class="btn btn-small" id="flipBtn" title="Flip newest / oldest">Newest ↓</button>
+        <button class="icon-btn" id="tvModeBtn" title="TV / remote mode" aria-pressed="false">📺 TV / remote mode</button>
+        <span class="result-count" id="resultCount"></span>
+        <hr class="menu-sep">
         <button data-action="export">Export library (JSON)</button>
         <button data-action="import">Import library (JSON)</button>
         <button data-action="clear-demo">Clear demo collection</button>
@@ -94,18 +100,22 @@
         <button class="chip" data-platform="instagram">Instagram</button>
         <button class="chip" data-platform="facebook">Facebook</button>
       </div>
-      <div class="toolbar-right">
-        <button class="btn btn-small" id="selectBtn" aria-pressed="false">Select</button>
-        <button class="btn btn-small" id="compactBtn" aria-pressed="false" title="Compact density">Compact</button>
-        <button class="btn btn-small" id="flipBtn" title="Flip newest / oldest">Newest ↓</button>
-        <span class="result-count" id="resultCount"></span>
-        <select id="sortSelect" aria-label="Sort">
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="title">Title A–Z</option>
-          <option value="platform">Platform</option>
-        </select>
+      <!-- v34: one slim sort chip replaces the old dropdown row -->
+      <div class="menu-wrap sort-wrap">
+        <button class="chip" id="sortChip" aria-haspopup="true" aria-expanded="false">Newest ▾</button>
+        <div class="dropdown" id="sortMenu" hidden>
+          <button data-sort="newest">Newest first</button>
+          <button data-sort="oldest">Oldest first</button>
+          <button data-sort="title">Title A–Z</button>
+          <button data-sort="platform">Platform</button>
+        </div>
       </div>
+      <select id="sortSelect" aria-label="Sort" hidden>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="title">Title A–Z</option>
+        <option value="platform">Platform</option>
+      </select>
     </div>
 
     <section class="continue" id="continueSection" hidden>

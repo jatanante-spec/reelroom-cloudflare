@@ -48,9 +48,9 @@ test("health is public and reports ok", async () => {
   assert.ok(data.time);
 });
 
-test("missing D1 binding gives a clear, actionable error", async () => {
+test("missing D1 binding gives a clear, actionable 500 error", async () => {
   const { res, data } = await call({ NO_SEED: "1" }, "/api/items");
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 500);
   assert.match(data.error, /D1 binding named DB/);
 });
 

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v33";
+  const REELROOM_VERSION = "v34";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -494,14 +494,15 @@
   function stampVersion() {
     const footer = document.querySelector(".side-footer");
     if (footer) footer.textContent = "Embed-only \u00b7 nothing is downloaded \u00b7 " + REELROOM_VERSION;
-    const top = document.querySelector(".topbar");
-    if (top && !$("#versionBadge")) {
+    // v34: the badge is no longer a button in the bar — it sits in the ⋮ menu
+    const menu = document.querySelector("#moreMenu");
+    if (menu && !$("#versionBadge")) {
       const badge = document.createElement("span");
       badge.id = "versionBadge";
-      badge.textContent = REELROOM_VERSION;
+      badge.className = "menu-ver";
+      badge.textContent = "ReelRoom " + REELROOM_VERSION;
       badge.title = "ReelRoom build version";
-      badge.style.cssText = "font-size:11px;color:#9a9a9a;border:1px solid #3a3a3a;border-radius:6px;padding:2px 6px;flex-shrink:0;";
-      top.appendChild(badge);
+      menu.appendChild(badge);
     }
     try { console.log("ReelRoom " + REELROOM_VERSION + " (installable app, Instagram crop, own fullscreen controls)"); } catch {}
   }
@@ -2549,6 +2550,14 @@
   }
   function syncFlip() {
     const b = $("#flipBtn"); if (b) b.textContent = state.sort === "oldest" ? "Oldest ↑" : "Newest ↓";
+    syncSortChip();
+  }
+  // v34: the slim sort chip shows which order is on
+  function syncSortChip() {
+    const chip = $("#sortChip"); if (!chip) return;
+    const label = { newest: "Newest", oldest: "Oldest", title: "Title", platform: "Platform" }[state.sort] || "Sort";
+    chip.textContent = label + " ▾";
+    chip.title = "Sort: " + label;
   }
   function flipOrder() {
     state.sort = state.sort === "oldest" ? "newest" : "oldest";
@@ -2732,6 +2741,29 @@
 
     $("#moreBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#moreMenu").hidden = !$("#moreMenu").hidden; });
     document.addEventListener("click", () => { $("#moreMenu").hidden = true; });
+
+    // v34: the slim sort chip and its small list of orders
+    const sortChip = $("#sortChip"), sortMenu = $("#sortMenu");
+    if (sortChip && sortMenu) {
+      sortChip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sortMenu.hidden = !sortMenu.hidden;
+        sortChip.setAttribute("aria-expanded", String(!sortMenu.hidden));
+      });
+      sortMenu.addEventListener("click", (e) => {
+        const v = e.target.dataset.sort; if (!v) return;
+        state.sort = v;
+        const sel = $("#sortSelect"); if (sel) sel.value = v;
+        syncFlip(); render();
+        sortMenu.hidden = true;
+        sortChip.setAttribute("aria-expanded", "false");
+      });
+      document.addEventListener("click", () => {
+        sortMenu.hidden = true;
+        sortChip.setAttribute("aria-expanded", "false");
+      });
+      syncSortChip();
+    }
     $("#moreMenu").addEventListener("click", (e) => {
       const act = e.target.dataset.action;
       if (act === "export") window.location.href = "/api/export";

@@ -28,15 +28,21 @@ test("password set -> cookie required", async () => {
   assert.equal(await isAuthenticated(req2, env), true);
 });
 
-test("cookie is deterministic for the same password and differs across passwords", async () => {
+test("v32 cookie authenticates only for its own password and carries an expiry", async () => {
   const a = await makeCookie({ REELROOM_PASSWORD: "one" }, false);
-  const b = await makeCookie({ REELROOM_PASSWORD: "one" }, false);
   const c = await makeCookie({ REELROOM_PASSWORD: "two" }, false);
-  assert.equal(a, b);
   assert.notEqual(a, c);
-  // a cookie from another password must not authenticate
   const env = { REELROOM_PASSWORD: "one" };
+  assert.equal(await isAuthenticated(new Request("http://x/api/items", { headers: { cookie: a } }), env), true);
   assert.equal(await isAuthenticated(new Request("http://x/api/items", { headers: { cookie: c } }), env), false);
+  // token format v2.<expiry>.<signature>
+  const token = a.split("reelroom_auth=")[1].split(";")[0];
+  const parts = token.split(".");
+  assert.equal(parts[0], "v2");
+  assert.ok(Number(parts[1]) > Date.now(), "expiry must be in the future");
+  // an expired token is rejected
+  const expired = `v2.${Date.now() - 1000}.${parts[2]}`;
+  assert.equal(await isAuthenticated(new Request("http://x/api/items", { headers: { cookie: `reelroom_auth=${expired}` } }), env), false);
 });
 
 test("cookie flags", async () => {

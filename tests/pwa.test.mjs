@@ -55,7 +55,7 @@ test("every declared icon exists and really is the stated pixel size", () => {
 });
 
 test("apple touch icon exists at 180x180", () => {
-  const { w, h } = pngSize(pub("icons/apple-touch-icon.png"));
+  const { w, h } = pngSize(pub("apple-touch-icon.png"));
   assert.equal(w, 180);
   assert.equal(h, 180);
 });
@@ -70,7 +70,7 @@ test("start_url and shortcut urls stay inside scope", () => {
 
 test("HTML links the manifest and the icons", () => {
   assert.match(html, /<link[^>]+rel="manifest"[^>]+href="manifest\.webmanifest"/);
-  assert.match(html, /<link[^>]+rel="apple-touch-icon"[^>]+href="icons\/apple-touch-icon\.png"/);
+  assert.match(html, /<link[^>]+rel="apple-touch-icon"[^>]+href="apple-touch-icon\.png"/);
   assert.match(html, /<meta[^>]+name="theme-color"[^>]+content="#0f0f0f"/);
   assert.match(html, /name="apple-mobile-web-app-capable"[^>]+content="yes"/);
   assert.match(html, /name="apple-mobile-web-app-title"[^>]+content="ReelRoom"/);
@@ -127,10 +127,12 @@ test("css braces stay balanced", () => {
   assert.equal(css.split("{").length, css.split("}").length);
 });
 
-test("_headers forces the correct manifest MIME type", () => {
-  const headers = read("_headers");
-  assert.match(headers, /\/manifest\.webmanifest/);
-  assert.match(headers, /Content-Type: application\/manifest\+json/);
+test("manifest uses the .webmanifest extension so Cloudflare serves the right type", () => {
+  // Verified against the Workers asset server: .webmanifest is served as
+  // application/manifest+json without needing a _headers file. Keeping the
+  // extension avoids shipping an extensionless file that phone pickers hide.
+  assert.ok(existsSync(pub("manifest.webmanifest")));
+  assert.match(html, /href="manifest\.webmanifest"/);
 });
 
 test("_routes.json still keeps static assets off the API quota", () => {
@@ -138,8 +140,8 @@ test("_routes.json still keeps static assets off the API quota", () => {
   assert.deepEqual(routes.include, ["/api/*"]);
 });
 
-test("version badge reports v12", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v12";/);
+test("version badge reports v32", () => {
+  assert.match(appjs, /const REELROOM_VERSION = "v34";/);
 });
 
 test("v10 fullscreen chrome is still present (no regression)", () => {
