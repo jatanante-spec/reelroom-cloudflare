@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v37";
+  const REELROOM_VERSION = "v38";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -136,6 +136,16 @@
   function needsMeta(item) {
     if (item.metadata_status === "pending") return true;
     if (!["youtube", "tiktok", "instagram", "facebook"].includes(item.platform)) return false;
+    // v38: a post's caption is fetched once, together with the rest of its
+    // details. Once it has been looked for, it is never looked for again —
+    // only an old copy of the details is refreshed, weeks later.
+    if (isPostItem(item)) {
+      if (!item.post_text_fetched) return true;
+      if (!item.metadata_fetched_at) return false;
+      const at = Date.parse(item.metadata_fetched_at);
+      if (!Number.isFinite(at)) return false;
+      return Date.now() - at > META_REFRESH_MS;
+    }
     if (!item.metadata_fetched_at) return true;
     const at = Date.parse(item.metadata_fetched_at);
     if (!Number.isFinite(at)) return true;
@@ -376,12 +386,15 @@
     const thumb = thumbnailFor(item);
     const ph = `<div class="thumb-placeholder ph-${item.platform}"><span class="big">${PLATFORM_ICON[item.platform] || "▶"}</span><span>${esc(PLATFORM_LABEL[item.platform] || item.platform)}</span></div>`;
     const img = thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+    // v38: a picture post is not a video — it gets no play button and no
+    // progress bar, so the card cannot be mistaken for something to play.
+    const post = isPostItem(item);
     return `<div class="thumb">${ph}${img}
       <span class="badge ${item.platform}">${esc(PLATFORM_LABEL[item.platform] || item.platform)}</span>
       ${item.demo ? '<span class="demo-badge">DEMO</span>' : ""}
       <span class="type-badge">${esc(TYPE_LABEL[item.media_type] || item.media_type)}</span>
-      ${Number(item.progress) > 0.02 && !item.watched ? `<span class="resume-badge">${canResumePlatform(item.platform) ? "Resume" : "Reopen"}</span><span class="thumb-progress"><i style="width:${Math.round(Math.min(1, Number(item.progress)) * 100)}%"></i></span>` : ""}
-      <div class="play-overlay"><span>▶</span></div>
+      ${!post && Number(item.progress) > 0.02 && !item.watched ? `<span class="resume-badge">${canResumePlatform(item.platform) ? "Resume" : "Reopen"}</span><span class="thumb-progress"><i style="width:${Math.round(Math.min(1, Number(item.progress)) * 100)}%"></i></span>` : ""}
+      ${post ? "" : `<div class="play-overlay"><span>▶</span></div>`}
     </div>`;
   }
 
@@ -394,7 +407,8 @@
         ${thumbHtml(item)}
         <div class="card-body">
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
-          <div class="card-author">${esc(item.author || item.web_host || PLATFORM_LABEL[item.platform] || "")} ${isLinkItem(item) ? (item.visited ? '<span class="watched-mark">✓ visited</span>' : "") : (item.watched ? '<span class="watched-mark">✓ watched</span>' : "")}</div>
+          <div class="card-author">${esc(item.author || item.web_host || PLATFORM_LABEL[item.platform] || "")} ${isLinkItem(item) ? (item.visited ? '<span class="watched-mark">✓ visited</span>' : "") : (isPostItem(item) ? "" : (item.watched ? '<span class="watched-mark">✓ watched</span>' : ""))}</div>
+          ${item.post_text ? `<p class="card-snippet">${esc(item.post_text.slice(0, 150))}</p>` : ""}
           <div class="card-meta">
             ${(item.tags || []).slice(0, 3).map((t) => `<span class="mini-tag">#${esc(t)}</span>`).join("")}
             ${item.collection ? `<span class="mini-tag">📁 ${esc(item.collection)}</span>` : ""}
@@ -834,6 +848,7 @@
       const ab = $("#fsAdjustBtn"); if (ab) ab.setAttribute("aria-pressed", "false");
     }
     updateSoundUI(); updateSwipeLayer();
+    syncCaptionLayout();
   }
 
   // ---- v13 More panel: occasional actions without cluttering the big view ----
@@ -1296,8 +1311,35 @@
     } catch {}
   }
 
+  // v38: in the big view the caption floats over the picture. It must sit
+  // above the control bar, and the sound button above the caption. Both
+  // heights are measured, so the layout is right on any screen.
+  function syncCaptionLayout() {
+    const shell = $("#playerShell");
+    if (!shell) return;
+    const modal = $("#playerModal");
+    const open = !!modal && !modal.hidden;
+    const bar = $("#fsBar");
+    const panel = $("#playerPostText");
+    const barH = open && bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+    const panelH = open && panel && !panel.hidden ? Math.round(panel.getBoundingClientRect().height) : 0;
+    // set on the page, so the toast can also keep clear of the caption
+    document.body.style.setProperty("--fs-bottom", barH + "px");
+    document.body.style.setProperty("--caption-h", panelH + "px");
+  }
+
   function renderPlayer(item) {
     $("#playerTitle").textContent = displayTitle(item);
+    // v38: Facebook's post embed leaves the caption outside the picture —
+    // show it here instead.
+    const postText = $("#playerPostText");
+    if (postText) {
+      const txt = String(item.post_text || "").trim();
+      postText.hidden = !txt;
+      const body = $("#playerPostTextBody");
+      if (body) body.textContent = txt;
+    }
+    syncCaptionLayout();
     $("#playerSub").textContent = [item.author, PLATFORM_LABEL[item.platform], TYPE_LABEL[item.media_type], item.collection].filter(Boolean).join(" · ");
     $("#openOriginalBtn").href = safeUrl(item.canonical_url || item.url);
     $("#favBtn").textContent = item.favorite ? "★ Favorited" : "☆ Favorite";
@@ -1472,6 +1514,7 @@
     $("#playerModal").hidden = true;
     $("#playerStage").innerHTML = "";
     document.body.style.overflow = "";
+    syncCaptionLayout();
     state.playerIndex = -1;
     state.igActive = false;
     resetBridge("");
@@ -1563,6 +1606,11 @@
   }
   // v37: a saved website is a link — the video player must never open it.
   function isLinkItem(item) { return !!item && item.platform === "web"; }
+  // v38: a post is a picture (or a photo album), not a video. It has no play
+  // button, no progress bar and no watched state.
+  function isPostItem(item) {
+    return !!item && item.platform !== "web" && (item.media_type === "post" || item.media_type === "image");
+  }
 
   // v23: highlight + scroll to a newly added card so it is easy to find.
   function highlightAdded(id) {
@@ -3125,6 +3173,15 @@
     const bulkCancel = $("#bulkCancelBtn"); if (bulkCancel) bulkCancel.addEventListener("click", () => setSelecting(false));
     const bulkOrg = $("#bulkOrganizeBtn"); if (bulkOrg) bulkOrg.addEventListener("click", () => { if (state.selected.size) openOrg([...state.selected]); });
     const bulkAll = $("#bulkSelectAllBtn"); if (bulkAll) bulkAll.addEventListener("click", selectAllVisible);
+    // v38: the caption panel can be folded away so it does not cover the picture
+    const postToggle = $("#postTextToggle");
+    if (postToggle) postToggle.addEventListener("click", () => {
+      const panel = $("#playerPostText");
+      if (!panel) return;
+      const folded = panel.classList.toggle("folded");
+      postToggle.setAttribute("aria-expanded", String(!folded));
+      syncCaptionLayout();
+    });
     // v37: the saved-link sheet
     const closeLink = () => {
       const f = $("#linkFrame"); if (f) f.src = "about:blank";
@@ -3496,6 +3553,7 @@
       if ($("#playerModal").hidden) return;
       const it = currentList()[state.playerIndex];
       if (it && it.platform === "facebook") sizeFacebookStage(it);
+      syncCaptionLayout();
     });
 
     document.addEventListener("keydown", (e) => {

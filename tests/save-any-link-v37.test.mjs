@@ -19,7 +19,7 @@ const meta = readFileSync(join(root, "lib", "metadata.mjs"), "utf8");
 const api = readFileSync(join(root, "lib", "api-core.mjs"), "utf8");
 
 test("the app says v37", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v37";/);
+  assert.match(appjs, /const REELROOM_VERSION = "v38";/);
 });
 
 test("a website is saved as a link, not as a video", async () => {
@@ -51,11 +51,11 @@ test("private and local addresses are never fetched", () => {
 test("the page title is read, and the frame check is done, in one visit", () => {
   assert.match(meta, /async function fetchWebPage\(url\)/);
   assert.match(meta, /og:title/);
-  assert.match(meta, /function canFrame\(resp\)/);
+  assert.match(meta, /function canFrame\(headers\)/);
   assert.match(meta, /x-frame-options/);
   assert.match(meta, /frame-ancestors/);
   // only the head of the page is read, never the whole thing
-  assert.match(meta, /readCapped\(resp, HEAD_BYTES\)/);
+  assert.match(meta, /readCapped\(resp, maxBytes\)/);
   // and private addresses are refused before anything is fetched
   assert.match(meta, /isPrivateHost\(u\.hostname\)/);
 });

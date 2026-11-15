@@ -16,7 +16,7 @@ const appjs = read("app.js");
 const css = read("styles.css");
 
 test("the app says the current version", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v37";/);
+  assert.match(appjs, /const REELROOM_VERSION = "v38";/);
 });
 
 test("organising several videos no longer wipes their collection and tags", () => {

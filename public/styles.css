@@ -842,11 +842,11 @@ body.tv-mode .player-shell.pseudo-fs #fsSoundBtn {
   left: 14px; bottom: 64px;
 }
 body.tv-mode .player-shell:fullscreen .sound-helper,
-body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
+body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: calc(110px + var(--caption-h, 0px)); }
 
 @media (max-width: 900px) {
   .player-shell:fullscreen .sound-helper:not([hidden]),
-  .player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: 96px; }
+  .player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: calc(96px + var(--caption-h, 0px)); }
   .sound-hint { bottom: 158px; }
 }
 
@@ -957,8 +957,9 @@ body.tv-mode .player-shell.pseudo-fs .sound-helper { bottom: 110px; }
 .clip-go { border: 0; background: #7bd88f; color: #08260f; border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 12.5px; cursor: pointer; }
 .clip-x { border: 0; background: none; color: #9fc9a6; font-size: 15px; padding: 2px 4px; cursor: pointer; }
 
-.toast { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
-body.standalone .toast { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+/* v38: the toast must not cover the caption of a post that is open */
+.toast { bottom: calc(140px + var(--caption-h, 0px) + env(safe-area-inset-bottom, 0px)); }
+body.standalone .toast { bottom: calc(140px + var(--caption-h, 0px) + env(safe-area-inset-bottom, 0px)); }
 
 .url-row { display: flex; gap: 8px; align-items: stretch; }
 .url-row input { flex: 1; }
@@ -1034,6 +1035,49 @@ body.selecting .org-tool, body.selecting .card-actions { display: none; }
 .bulk-n { font-size: 13px; font-weight: 700; padding: 0 6px; white-space: nowrap; }
 
 .org-sub { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* v38: the caption of a post, and its short version on the card */
+.player-post-text {
+  font-size: 13.5px; line-height: 1.5; color: #e8e8e8;
+  background: rgba(12,12,12,.88); border: 1px solid var(--border); border-radius: 12px;
+  -webkit-user-select: text; user-select: text;
+}
+.player-post-text .post-text-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; background: none; border: 0; color: var(--text-dim);
+  font-size: 11.5px; letter-spacing: .5px; text-transform: uppercase;
+  padding: 8px 12px; cursor: pointer;
+}
+.player-post-text .post-text-head .chev { font-size: 13px; transition: transform .15s ease; }
+.player-post-text.folded .chev { transform: rotate(-90deg); }
+.player-post-text .post-text-body {
+  padding: 0 12px 12px; max-height: 30vh; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+.player-post-text.folded .post-text-body { display: none; }
+/* in the big view the stage owns the screen — the caption floats over it,
+   above the control bar (whose height is measured and set as --fs-bottom) */
+.player-shell:fullscreen .player-post-text,
+.player-shell.pseudo-fs .player-post-text {
+  position: absolute; left: 0; right: 0;
+  bottom: var(--fs-bottom, 0px);
+  z-index: 7;
+  margin: 0; border-radius: 14px 14px 0 0; border-left: 0; border-right: 0; border-bottom: 0;
+  background: rgba(10,10,10,.92);
+}
+/* the caption must never hide the buttons underneath it */
+.player-shell:fullscreen .fs-bar,
+.player-shell.pseudo-fs .fs-bar,
+.player-shell:fullscreen .upnext,
+.player-shell.pseudo-fs .upnext { z-index: 8; }
+/* and the sound button sits above the caption, never behind it */
+.player-shell:fullscreen .sound-helper:not([hidden]),
+.player-shell.pseudo-fs .sound-helper:not([hidden]) { bottom: calc(86px + var(--caption-h, 0px)); }
+.player-shell:fullscreen .player-post-text .post-text-body,
+.player-shell.pseudo-fs .player-post-text .post-text-body { max-height: 32vh; }
+.card-snippet {
+  font-size: 12px; line-height: 1.4; color: var(--text-faint); margin: 4px 0 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 /* v36: the plain-language summary of what Save will do */
 .org-what { font-size: 12px; color: var(--text-faint); margin: -4px 0 2px; line-height: 1.35; }
 .org-pick.has { opacity: .6; border-style: dashed; }

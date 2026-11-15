@@ -141,7 +141,7 @@ test("_routes.json still keeps static assets off the API quota", () => {
 });
 
 test("version badge reports the current version", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v37";/);
+  assert.match(appjs, /const REELROOM_VERSION = "v38";/);
 });
 
 test("v10 fullscreen chrome is still present (no regression)", () => {

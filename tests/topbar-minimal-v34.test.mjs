@@ -50,7 +50,7 @@ test("one slim sort chip replaces the old dropdown row", () => {
 });
 
 test("the sort chip opens its list and applies the chosen order", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v37";/);
+  assert.match(appjs, /const REELROOM_VERSION = "v38";/);
   assert.match(appjs, /function syncSortChip\(\)/);
   assert.match(appjs, /sortChip\.addEventListener\("click"/);
   assert.match(appjs, /sortMenu\.addEventListener\("click"/);
