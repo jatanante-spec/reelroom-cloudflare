@@ -345,6 +345,7 @@
         </span>
       </label>
       <div class="shared-note" id="sharedNote" hidden>Shared link received ✓</div>
+      <div class="shared-note" id="clipNote" hidden></div>
       <div class="detected" id="detectedPlatform"></div>
       <details class="add-details" id="addDetails">
         <summary>Optional details (title, collection, tags, notes)</summary>
@@ -362,7 +363,10 @@
     </div>
     <div class="tab-panel" id="tab-bulk" hidden>
       <label>One link per line
-        <textarea id="bulkUrls" rows="9" placeholder="https://youtube.com/watch?v=…&#10;https://www.tiktok.com/@user/video/…&#10;https://www.instagram.com/reel/…&#10;https://www.facebook.com/watch?v=…"></textarea>
+        <span class="bulk-paste-row">
+          <textarea id="bulkUrls" rows="9" placeholder="https://youtube.com/watch?v=…&#10;https://www.tiktok.com/@user/video/…&#10;https://www.instagram.com/reel/…&#10;https://www.facebook.com/watch?v=…"></textarea>
+          <button type="button" class="btn paste-btn" id="bulkPasteBtn" title="Paste from clipboard">📋 Paste from clipboard</button>
+        </span>
       </label>
       <div class="row-2">
         <label>Apply collection to all (optional)<input type="text" id="bulkCollection" placeholder="e.g. Watch later"></label>

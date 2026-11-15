@@ -30,13 +30,15 @@ test("C: copied-link chip + paste button", () => {
   assert.match(css, /\.clip-chip/);
 });
 
-test("D: PWA share target pre-fills the add sheet", () => {
+test("D: PWA share target reaches the add flow", () => {
   assert.ok(manifest.share_target, "manifest share_target missing");
   assert.equal(manifest.share_target.method, "GET");
   assert.ok(manifest.share_target.params.url);
   assert.match(appjs, /function openAddWith\(url, shared\)/);
   assert.match(appjs, /const sharedUrl = extractUrl\(params\.get\("url"\) \|\| params\.get\("text"\) \|\| params\.get\("title"\) \|\| ""\);/);
-  assert.match(appjs, /if \(sharedUrl\) openAddWith\(sharedUrl, true\);/);
+  // v35: the shared link is saved straight away; the sheet stays as the fallback
+  assert.match(appjs, /if \(sharedUrl\) handleSharedUrl\(/);
+  assert.match(appjs, /if \(!detectPlatform\(url\)\) \{ openAddWith\(url, true\); return; \}/);
   assert.match(html, /id="sharedNote"/);
 });
 

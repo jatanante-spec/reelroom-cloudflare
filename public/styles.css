@@ -949,6 +949,12 @@ body.standalone .toast { bottom: calc(140px + env(safe-area-inset-bottom, 0px));
 .url-row input { flex: 1; }
 .paste-btn { white-space: nowrap; padding: 0 14px; font-size: 13.5px; border-color: #3f6b47; background: #1d2b1f; color: #d9f5de; }
 .shared-note { font-size: 12.5px; color: #7bd88f; margin: -4px 0 10px; }
+/* v35: the note that tells you the clipboard was read for you */
+#clipNote { margin: -6px 0 10px; }
+/* v35: the bulk box and its own paste button */
+.bulk-paste-row { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.bulk-paste-row textarea { width: 100%; }
+.bulk-paste-row .paste-btn { align-self: flex-start; }
 
 @media (max-width: 640px) {
   #addModal { align-items: flex-end; padding: 0; }

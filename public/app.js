@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v34";
+  const REELROOM_VERSION = "v35";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -27,6 +27,8 @@
     pendingTikTokSeek: 0,
     undoId: null,
     undoTimer: null,
+    pendingShare: null,   // v35: a link shared while signed out
+    authed: true,         // v35: false once the server says we are signed out
     swipeTouch: null,
     navAutoplayAt: 0,
     autoplayNudgeTimers: [],
@@ -151,9 +153,10 @@
   async function checkAuth() {
     try {
       const me = await api("/api/me");
+      state.authed = me.authenticated !== false;
       $("#logoutBtn").hidden = !me.required;
       if (me.required && !me.authenticated) { showLogin(); return false; }
-    } catch { /* offline or error; try loading anyway */ }
+    } catch { state.authed = true; /* offline or error; try loading anyway */ }
     return true;
   }
   async function doLogin() {
@@ -164,7 +167,14 @@
       $("#loginError").textContent = "";
       $("#loginPassword").value = "";
       $("#logoutBtn").hidden = false;
+      state.authed = true;
       await loadItems();
+      // v35: the link that was shared while signed out is saved now.
+      if (state.pendingShare) {
+        const s = state.pendingShare;
+        state.pendingShare = null;
+        handleSharedUrl(s.url, s.text);
+      }
     } catch (e) {
       $("#loginError").innerHTML = `<span class="bad">${esc(e.message)}</span>`;
     }
@@ -2397,7 +2407,8 @@
       render();
     }
     if (add === "1") { $("#addModal").hidden = false; }
-    if (sharedUrl) openAddWith(sharedUrl, true);
+    // v35: a shared video link is saved straight away (Undo if it was wrong).
+    if (sharedUrl) handleSharedUrl(sharedUrl, params.get("text") || params.get("title") || "");
     // Clean the URL so a refresh does not re-trigger the shortcut.
     try { window.history.replaceState({}, "", window.location.pathname); } catch {}
   }
@@ -2665,6 +2676,100 @@
     const c = $("#clipChip"); if (c) c.hidden = false;
   }
 
+  // ---- v35: share → saved, and a clipboard that actually works ----
+
+  // Read the clipboard NOW, inside the tap that opened the Add sheet. Android
+  // only lets a page read the clipboard during a real tap, so the read has to
+  // start in the click handler itself.
+  function readClipNow() {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) return null;
+      return navigator.clipboard.readText().catch(() => "");
+    } catch { return null; }
+  }
+
+  // Every video link inside a piece of text — Facebook sometimes copies a
+  // caption that carries more than one link.
+  function extractAllUrls(text) {
+    const out = [];
+    const re = /https?:\/\/[^\s"'<>]+/g;
+    let m;
+    while ((m = re.exec(String(text || ""))) !== null) {
+      const u = extractUrl(m[0]);
+      if (u && !out.includes(u)) out.push(u);
+    }
+    return out;
+  }
+
+  // Put what is on the clipboard into the Add sheet: one link goes into the
+  // single field, several links go into the bulk box.
+  function fillFromClipboard(text) {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    const urls = extractAllUrls(t).filter((u) => detectPlatform(u));
+    if (!urls.length) return false;
+    const note = $("#clipNote");
+    if (urls.length === 1) {
+      const f = $("#singleUrl");
+      if (!f || f.value.trim()) return false;
+      f.value = urls[0];
+      f.dispatchEvent(new Event("input"));
+      if (note) { note.textContent = "Pasted from your clipboard ✓"; note.hidden = false; }
+    } else {
+      const ta = $("#bulkUrls");
+      if (!ta) return false;
+      ta.value = urls.join("\n");
+      $$(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === "bulk"));
+      $("#tab-single").hidden = true;
+      $("#tab-bulk").hidden = false;
+      if (note) {
+        note.textContent = urls.length + " links found in your clipboard — tap “Add all links”";
+        note.hidden = false;
+      }
+    }
+    return true;
+  }
+
+  // Open the Add sheet from a tap and look at the clipboard during that tap.
+  function openAddFromTap() {
+    const clip = readClipNow();
+    openAddWith("", false);
+    if (clip) clip.then((t) => fillFromClipboard(t));
+  }
+
+  // A link shared from Facebook / YouTube / TikTok / Instagram is saved
+  // straight away — with an Undo button if it was the wrong one.
+  async function handleSharedUrl(url, sharedText) {
+    if (!url) return;
+    if (state.authed === false) {
+      state.pendingShare = { url, text: sharedText || "" };
+      showLogin();
+      return;
+    }
+    if (!detectPlatform(url)) { openAddWith(url, true); return; } // not a video link
+    try {
+      const data = await api("/api/items", { method: "POST", body: { url } });
+      if (!data || !data.item) { openAddWith(url, true); return; } // no item back → show the sheet
+      if (data.duplicate) {
+        toast("Already in your library");
+        if (!state.items.some((i) => i.id === data.item.id)) { state.items.unshift(data.item); render(); }
+        highlightAdded(data.item.id);
+        scrollToCard(data.item.id);
+        return;
+      }
+      state.pendingShare = null;
+      state.items.unshift(data.item);
+      render();
+      schedulePoll();
+      highlightAdded(data.item.id);
+      const name = String(data.item.title || "the video").slice(0, 42);
+      toast("Added: " + name, { label: "Undo", fn: () => undoAdd(data.item) });
+    } catch (e) {
+      toast(e.message);
+      openAddWith(url, true); // never lose the link — show the sheet instead
+    }
+  }
+
   // ---- v24 D: open add sheet pre-filled (share target / chip) ----
   function openAddWith(url, shared) {
     $$(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === "single"));
@@ -2698,8 +2803,10 @@
   }
 
   function bind() {
-    $("#addBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
-    $("#emptyAddBtn").addEventListener("click", () => { $("#addModal").hidden = false; $("#singleUrl").focus(); });
+    // v35: "+ Add" looks at the clipboard during the tap, so a link copied in
+    // Facebook is already in the box when the sheet opens.
+    $("#addBtn").addEventListener("click", openAddFromTap);
+    $("#emptyAddBtn").addEventListener("click", openAddFromTap);
     $$("[data-close]").forEach((b) => b.addEventListener("click", () => { $("#" + b.dataset.close).hidden = true; }));
     $$(".modal-backdrop").forEach((m) => m.addEventListener("click", (e) => { if (e.target === m) { m.hidden = true; if (m.id === "playerModal") closePlayer(); } }));
 
@@ -2873,13 +2980,24 @@
       dock.addEventListener("focusin", () => { state.dockHidden = false; dock.classList.remove("dock-hidden"); });
       $("#dockHome").addEventListener("click", () => { state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); });
       $("#dockSearch").addEventListener("click", () => { scrollToTop(); openTopSearch(); });
-      $("#dockAdd").addEventListener("click", () => openAddWith("", false));
+      $("#dockAdd").addEventListener("click", openAddFromTap);
       $("#dockTop").addEventListener("click", scrollToTop);
     }
     // v24 C: chip + clipboard watch
     const clipAdd = $("#clipAddBtn");
     if (clipAdd) clipAdd.addEventListener("click", async () => { const u = state.clipUrl; hideClip(); if (u) { $("#singleUrl").value = u; await addSingle(); } });
     const clipX = $("#clipDismissBtn"); if (clipX) clipX.addEventListener("click", hideClip);
+    const bulkPasteBtn = $("#bulkPasteBtn");
+    if (bulkPasteBtn) bulkPasteBtn.addEventListener("click", async () => {
+      try {
+        const t = await navigator.clipboard.readText();
+        if (!t || !t.trim()) { toast("Clipboard is empty"); return; }
+        const ta = $("#bulkUrls");
+        ta.value = ta.value.trim() ? ta.value.trim() + "\n" + t.trim() : t.trim();
+        ta.dispatchEvent(new Event("input"));
+        toast("Pasted from clipboard");
+      } catch { toast("Clipboard unavailable — paste manually"); }
+    });
     const pasteBtn = $("#pasteBtn");
     if (pasteBtn) pasteBtn.addEventListener("click", async () => {
       try {
@@ -3243,5 +3361,10 @@
   syncFlip();
   if (prefs.theatre) $("#playerModal").classList.add("theatre");
   updateFsBtn();
-  checkAuth().then((ok) => { if (ok) { loadItems(); applyLaunchShortcut(); } });
+  // v35: a share is handled in every case — if we are signed out it waits for
+  // the password and is saved the moment the login succeeds.
+  checkAuth().then(async (ok) => {
+    if (ok) { await loadItems(); }
+    applyLaunchShortcut();
+  });
 })();

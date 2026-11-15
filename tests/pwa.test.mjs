@@ -140,8 +140,8 @@ test("_routes.json still keeps static assets off the API quota", () => {
   assert.deepEqual(routes.include, ["/api/*"]);
 });
 
-test("version badge reports v32", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v34";/);
+test("version badge reports the current version", () => {
+  assert.match(appjs, /const REELROOM_VERSION = "v35";/);
 });
 
 test("v10 fullscreen chrome is still present (no regression)", () => {
