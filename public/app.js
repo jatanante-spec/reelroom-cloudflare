@@ -16,6 +16,7 @@
     sort: "newest",
     playerIndex: -1,
     playerQueue: null, // keep the open viewing order stable when organizing changes a filter
+    playerBaseQueue: null, // original viewing order while shuffle is enabled
     editingId: null,
     pollTimer: null,
     fbUseAlt: false,
@@ -500,6 +501,39 @@
     return filtered();
   }
 
+  // Keep the current item playing and randomize each other video exactly once.
+  // The captured order also preserves the queue if organizing changes a filter.
+  function setPlayerShuffleOrder(list, currentId) {
+    state.playerBaseQueue = list.map((item) => item.id);
+    const others = list.filter((item) => item.id !== currentId && !isLinkItem(item)).map((item) => item.id);
+    for (let i = others.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [others[i], others[j]] = [others[j], others[i]];
+    }
+    state.playerQueue = [currentId, ...others];
+    state.playerIndex = 0;
+  }
+  function togglePlayerShuffle() {
+    const list = currentList();
+    const current = list[state.playerIndex];
+    if (!current) return;
+    prefs.shuffle = !prefs.shuffle;
+    if (prefs.shuffle) setPlayerShuffleOrder(list, current.id);
+    else {
+      state.playerQueue = state.playerBaseQueue || list.map((item) => item.id);
+      state.playerBaseQueue = null;
+      state.playerIndex = currentList().findIndex((item) => item.id === current.id);
+    }
+    savePrefs();
+    cancelCountdown();
+    scheduleNextFacebookPreparation();
+    renderUpNext({ ...current, platform: state.activePlatform || current.platform });
+    $("#prevBtn").disabled = state.playerIndex <= 0;
+    $("#nextBtn").disabled = state.playerIndex >= currentList().length - 1;
+    syncFsMore();
+    toast(prefs.shuffle ? "Shuffle on" : "Shuffle off");
+  }
+
   function openPlayer(id, fromRail) {
     let list = currentList();
     let idx = list.findIndex((i) => i.id === id);
@@ -517,6 +551,7 @@
     state.fbUseAlt = false;
     state.useBackup = null;
     $("#playerModal").hidden = false;
+    if (prefs.shuffle) setPlayerShuffleOrder(list, id);
     document.body.style.overflow = "hidden";
     hideUndo();
     if (!state.playerHistoryActive) armPlayerHistory();
@@ -924,6 +959,7 @@
     const mo = $("#fsMoreOriginalBtn"); if (mo) mo.href = active.url || safeUrl(item.canonical_url || item.url);
     const mb = $("#fsMoreBackupBtn"); if (mb) mb.textContent = hasBackup ? "Change backup link" : "Add backup link";
     const ap = $("#fsAutoplayBtn"); if (ap) { ap.textContent = prefs.autoplay ? "On" : "Off"; ap.setAttribute("aria-pressed", String(!!prefs.autoplay)); }
+    const sh = $("#fsShuffleBtn"); if (sh) { sh.textContent = prefs.shuffle ? "On" : "Off"; sh.setAttribute("aria-pressed", String(!!prefs.shuffle)); }
     const rem = $("#fsSoundRememberBtn"); if (rem) { rem.textContent = soundRememberOn() ? "On" : "Off"; rem.setAttribute("aria-pressed", String(soundRememberOn())); }
     const ar = $("#fsAutoResumeBtn"); if (ar) { ar.textContent = prefs.autoResume ? "On" : "Off"; ar.setAttribute("aria-pressed", String(!!prefs.autoResume)); }
     const bg = $("#fsBackGuardSelect"); if (bg) bg.value = prefs.backGuard || "smart";
@@ -1632,6 +1668,7 @@
     syncCaptionLayout();
     state.playerIndex = -1;
     state.playerQueue = null;
+    state.playerBaseQueue = null;
     state.igActive = false;
     resetBridge("");
     clearTimeout(sound.confirmTimer);
@@ -2189,7 +2226,7 @@
   const PREFS_KEY = "reelroom.prefs.v1";
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
   const prefs = Object.assign({ tvMode: null, theatre: false, autoplay: true, advanceSecs: 0, continueClearedAt: null,
-    soundRemember: true, autoResume: true, backGuard: "smart", swipeNav: "edges", reelsMode: false,
+    shuffle: false, soundRemember: true, autoResume: true, backGuard: "smart", swipeNav: "edges", reelsMode: false,
     igFullPost: false, compact: false, igAdjust: { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } } }, loadPrefs());
   if (!prefs.igAdjust || !prefs.igAdjust.reel) prefs.igAdjust = { reel: { zoom: 1, dy: 0 }, post: { zoom: 1, dy: 0 } };
   // v17: the old v16 default was "ask" for every platform. Move that default to
@@ -3622,6 +3659,7 @@
 
     // ---- v13 More panel ----
     on("#fsMoreBtn", toggleFsMore);
+    on("#fsShuffleBtn", togglePlayerShuffle);
     on("#fsFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
     on("#fsMoreCloseBtn", closeFsMore);
     on("#fsMoreFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
