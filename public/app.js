@@ -940,8 +940,8 @@
       return p ? Array.from(p.querySelectorAll("button, select, a")).filter(isVisible) : [];
     }
     if (state.playerView === "big" && inFullscreen()) {
-      if (state.controlsHiddenByUser) return [$("#fsControlsToggle")].filter(isVisible);
-      return ["#fsExitBtn", "#fsControlsToggle", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#playerOrgBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
+      if (state.controlsHiddenByUser) return [$("#fsControlsToggle"), $("#fsShellFullscreenBtn")].filter(isVisible);
+      return ["#fsExitBtn", "#fsControlsToggle", "#fsShellFullscreenBtn", "#fsPrevBtn", "#fsNextBtn", "#fsSoundBtn", "#soundHelperBtn", "#playerOrgBtn", "#fsFavBtn", "#fsMoreBtn", "#fsFullPostBtn", "#fsAdjustBtn", "#fsCancelBtn"]
         .map((s) => $(s)).filter(isVisible);
     }
     return [];
@@ -2229,6 +2229,12 @@
       b.setAttribute("aria-label", on ? "Exit true fullscreen" : "Fullscreen");
       b.setAttribute("aria-pressed", String(on));
     }
+    const fb = $("#fsShellFullscreenBtn");
+    if (fb) {
+      const on = document.fullscreenElement === $("#playerShell");
+      const text = on ? "Exit ReelRoom fullscreen" : "Enter ReelRoom fullscreen";
+      fb.title = text; fb.setAttribute("aria-label", text); fb.setAttribute("aria-pressed", String(on));
+    }
     const t = $("#theatreBtn");
     if (t) {
       const details = state.playerView === "details";
@@ -2267,6 +2273,12 @@
   function toggleDetailsView() {
     if (state.playerView === "details") enterBigView(); else enterDetailsView();
   }
+  function showFullscreenStatus(message) {
+    const el = $("#fsFullscreenStatus"); if (!el) return;
+    clearTimeout(showFullscreenStatus.timer);
+    el.textContent = message; el.hidden = false;
+    showFullscreenStatus.timer = setTimeout(() => { el.hidden = true; }, 4500);
+  }
   async function toggleFullscreen() {
     const shell = $("#playerShell");
     if (!shell) return;
@@ -2284,6 +2296,7 @@
       await shell.requestFullscreen();
     } catch {
       shell.classList.add("pseudo-fs");
+      showFullscreenStatus("Your browser did not allow fullscreen. Big view is still available.");
     }
     state.playerView = "big";
     shell.classList.add("pseudo-fs");
@@ -3420,6 +3433,7 @@
     ensurePlayerActionButtons();
     $("#closePlayerBtn").addEventListener("click", closePlayer);
     $("#fsControlsToggle").addEventListener("click", (e) => { e.stopPropagation(); toggleFsControls(); });
+    $("#fsShellFullscreenBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
     $("#playerOrgBtn").addEventListener("click", (e) => {
       e.stopPropagation();
       const item = currentList()[state.playerIndex];
@@ -3574,7 +3588,7 @@
     const shellEl = $("#playerShell");
     if (shellEl) {
       const shouldReveal = (e) => {
-        if (e.target && e.target.closest && e.target.closest("#fsControlsToggle")) return false;
+        if (e.target && e.target.closest && e.target.closest("#fsControlsToggle, #fsShellFullscreenBtn")) return false;
         // Do not bring app buttons back on top of the video's own bottom
         // controls while the viewer is trying to tap them.
         if (shellEl.classList.contains("fs-idle")) {

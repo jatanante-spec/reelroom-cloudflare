@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-clear-controls-2">
+<link rel="stylesheet" href="styles.css?v=38-continuous-fullscreen">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -211,6 +211,13 @@
          away from Instagram's top-right "View profile" button. -->
     <button class="fs-exit" id="fsExitBtn" title="Close player (Esc)" aria-label="Close player">✕</button>
     <button class="fs-controls-toggle" id="fsControlsToggle" type="button" aria-pressed="false" aria-label="Hide ReelRoom controls">Hide controls</button>
+    <button class="fs-shell-fullscreen" id="fsShellFullscreenBtn" type="button" aria-label="Enter ReelRoom fullscreen" title="Enter ReelRoom fullscreen" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path class="fs-icon-enter" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"></path>
+        <path class="fs-icon-exit" d="M4 9h5V4M15 4v5h5M20 15h-5v5M9 20v-5H4"></path>
+      </svg>
+    </button>
+    <div class="fs-fullscreen-status" id="fsFullscreenStatus" role="status" aria-live="polite" hidden></div>
     <div class="fs-bar" id="fsBar">
       <button class="fs-btn" id="fsPrevBtn" title="Previous (←)">‹</button>
       <button class="fs-btn" id="fsNextBtn" title="Next (→)">›</button>
@@ -599,6 +606,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-clear-controls-2"></script>
+<script src="app.js?v=38-continuous-fullscreen"></script>
 </body>
 </html>

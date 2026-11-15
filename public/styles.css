@@ -1223,3 +1223,20 @@ body.tv-mode .player-shell:fullscreen .player-organize, body.tv-mode .player-she
 .group-grid > .card, .search-wrap { min-width: 0; }
 .card-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-meta .mini-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Fullscreen the stable ReelRoom shell, not an individual replaceable video. */
+.fs-shell-fullscreen { display: none; }
+.player-shell:fullscreen .fs-shell-fullscreen, .player-shell.pseudo-fs .fs-shell-fullscreen {
+  display: inline-flex; align-items: center; justify-content: center;
+  position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); z-index: 11;
+  width: 44px; height: 44px; padding: 0; border: 1px solid rgba(255,255,255,.35);
+  border-radius: 50%; background: rgba(18,20,25,.88); color: #fff; cursor: pointer;
+}
+.player-shell:fullscreen .fs-controls-toggle, .player-shell.pseudo-fs .fs-controls-toggle {
+  top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(62px + env(safe-area-inset-right, 0px));
+}
+.fs-shell-fullscreen:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+.fs-shell-fullscreen .fs-icon-exit { display: none; }
+.fs-shell-fullscreen[aria-pressed="true"] .fs-icon-enter { display: none; }
+.fs-shell-fullscreen[aria-pressed="true"] .fs-icon-exit { display: inline; }
+.player-shell.more-open .fs-shell-fullscreen, .player-shell.guard-open .fs-shell-fullscreen { display: none; }
+.fs-fullscreen-status { position: absolute; z-index: 12; top: 64px; right: 10px; max-width: min(290px, 85vw); padding: 10px 12px; border-radius: 10px; background: #20242c; color: #fff; border: 1px solid #67707c; font-size: 13px; }
