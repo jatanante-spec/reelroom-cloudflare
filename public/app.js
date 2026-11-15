@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v35";
+  const REELROOM_VERSION = "v36";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -27,6 +27,9 @@
     pendingTikTokSeek: 0,
     undoId: null,
     undoTimer: null,
+    orgColTouched: false,  // v36: has a collection actually been chosen?
+    orgTagsClear: false,   // v36: clear the tags instead of adding to them
+    orgSingle: false,      // v36: one video (exact edit) or many (add only)
     pendingShare: null,   // v35: a link shared while signed out
     authed: true,         // v35: false once the server says we are signed out
     swipeTouch: null,
@@ -1654,6 +1657,30 @@
   function allCollections() { return [...new Set(state.items.map((i) => i.collection).filter(Boolean))].sort(); }
   function allTags() { return [...new Set(state.items.flatMap((i) => i.tags || []))].sort(); }
 
+  // v36: tap-chips of the collections and tags you already have, so the bulk
+  // paste never invents a second "Cooking".
+  function renderBulkChips() {
+    const colWrap = $("#bulkColChips"), tagWrap = $("#bulkTagChips");
+    if (colWrap) {
+      colWrap.innerHTML = allCollections().map((c) => `<button type="button" class="org-pick" data-bcol="${esc(c)}">📁 ${esc(c)}</button>`).join("");
+      colWrap.querySelectorAll("[data-bcol]").forEach((b) => b.addEventListener("click", () => {
+        const f = $("#bulkCollection"); if (!f) return;
+        f.value = b.dataset.bcol; f.dispatchEvent(new Event("input"));
+      }));
+    }
+    if (tagWrap) {
+      tagWrap.innerHTML = allTags().map((t) => `<button type="button" class="org-pick" data-btag="${esc(t)}">#${esc(t)}</button>`).join("");
+      tagWrap.querySelectorAll("[data-btag]").forEach((b) => b.addEventListener("click", () => {
+        const f = $("#bulkTags"); if (!f) return;
+        const t = b.dataset.btag;
+        const parts = f.value.split(",").map((x) => x.trim()).filter(Boolean);
+        if (!parts.some((p) => p.toLowerCase() === t.toLowerCase())) parts.push(t);
+        f.value = parts.join(", ");
+        f.dispatchEvent(new Event("input"));
+      }));
+    }
+  }
+
   function setSelecting(on) {
     state.selecting = on;
     if (!on) state.selected.clear();
@@ -1668,13 +1695,34 @@
   }
   function updateBulkCount() {
     const el = $("#bulkCount"); if (el) el.textContent = `${state.selected.size} selected`;
+    // v36: the button says what it will do — take everything shown, or let go.
+    const all = $("#bulkSelectAllBtn");
+    if (all) {
+      const list = filtered();
+      const every = list.length > 0 && list.every((i) => state.selected.has(i.id));
+      all.textContent = every ? "Clear" : "Select all";
+      all.setAttribute("aria-label", every ? "Clear the selection" : `Select all ${list.length} videos`);
+    }
+  }
+  // v36: one tap takes every video that matches the current filter/search.
+  function selectAllVisible() {
+    const list = filtered();
+    const every = list.length > 0 && list.every((i) => state.selected.has(i.id));
+    for (const i of list) { if (every) state.selected.delete(i.id); else state.selected.add(i.id); }
+    render(); updateBulkCount();
+    toast(every ? "Selection cleared" : `Selected ${list.length} video${list.length === 1 ? "" : "s"}`);
   }
 
   function openOrg(ids) {
     if (!ids || !ids.length) return;
     state.orgIds = ids;
     const first = state.items.find((i) => i.id === ids[0]);
+    // v36: several videos → only what you tap gets changed. One video → the
+    // exact same edit as before (its own tags show as chosen).
+    state.orgSingle = ids.length === 1;
     state.orgCol = ids.length === 1 ? (first?.collection || "") : "";
+    state.orgColTouched = ids.length === 1;
+    state.orgTagsClear = false;
     state.orgTags = new Set(ids.length === 1 ? (first?.tags || []) : []);
     const sub = $("#orgSub");
     if (sub) sub.textContent = ids.length === 1 ? displayTitle(first) : `${ids.length} videos selected`;
@@ -1688,19 +1736,50 @@
     if (colWrap) {
       // v27: include the draft collection so a newly created name shows as a selected chip.
       const cols = [...new Set([...allCollections(), ...(state.orgCol ? [state.orgCol] : [])])].sort();
-      colWrap.innerHTML = cols.map((c) => `<button class="org-pick ${state.orgCol === c ? "on" : ""}" data-col="${esc(c)}">📁 ${esc(c)}</button>`).join("") +
-        `<button class="org-pick ${state.orgCol === "" ? "on" : ""}" data-col="">None</button>`;
-      colWrap.querySelectorAll("[data-col]").forEach((b) => b.addEventListener("click", () => { state.orgCol = b.dataset.col; renderOrg(); }));
+      colWrap.innerHTML = cols.map((c) => `<button class="org-pick ${state.orgCol === c && state.orgColTouched ? "on" : ""}" data-col="${esc(c)}">📁 ${esc(c)}</button>`).join("") +
+        `<button class="org-pick ${state.orgCol === "" && state.orgColTouched ? "on" : ""}" data-col="">None</button>`;
+      colWrap.querySelectorAll("[data-col]").forEach((b) => b.addEventListener("click", () => { state.orgCol = b.dataset.col; state.orgColTouched = true; renderOrg(); }));
     }
     if (tagWrap) {
       // v27: include draft tags so newly added tags show as selected chips.
       const tags = [...new Set([...allTags(), ...state.orgTags])].sort();
-      tagWrap.innerHTML = tags.map((t) => `<button class="org-pick ${state.orgTags.has(t) ? "on" : ""}" data-tag="${esc(t)}">#${esc(t)}</button>`).join("");
+      // v36: a tag every selected video already has is marked, so it is obvious
+      // that tapping it will not change anything for those videos.
+      const common = new Set(tags.filter((t) => state.orgIds.every((id) => {
+        const it = state.items.find((x) => x.id === id);
+        return it && (it.tags || []).includes(t);
+      })));
+      tagWrap.innerHTML = tags.map((t) => {
+        const on = state.orgTags.has(t);
+        const already = common.has(t) && !on;
+        return `<button class="org-pick ${on ? "on" : ""} ${already ? "has" : ""}" data-tag="${esc(t)}">#${esc(t)}${already ? " ✓" : ""}</button>`;
+      }).join("");
       tagWrap.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
         const t = b.dataset.tag;
         if (state.orgTags.has(t)) state.orgTags.delete(t); else state.orgTags.add(t);
         renderOrg();
       }));
+    }
+    // v36: say plainly what Save is about to do.
+    const what = $("#orgWhat");
+    if (what) {
+      const n = state.orgIds.length;
+      const bits = [];
+      if (state.orgSingle) {
+        bits.push("Changes this one video");
+      } else {
+        if (state.orgColTouched) bits.push("collection → “" + (state.orgCol || "None") + "”");
+        else bits.push("collections stay as they are");
+        if (state.orgTagsClear) bits.push("tags are cleared");
+        else if (state.orgTags.size) bits.push("adds " + [...state.orgTags].map((t) => "#" + t).join(" ") + " (keeps the rest)");
+        else bits.push("tags stay as they are");
+      }
+      what.textContent = n + (n === 1 ? " video · " : " videos · ") + bits.join(" · ");
+    }
+    const clearBtn = $("#orgClearTagsBtn");
+    if (clearBtn) {
+      clearBtn.hidden = state.orgSingle;
+      clearBtn.textContent = state.orgTagsClear ? "Keep tags instead" : "Clear all tags";
     }
     const sug = $("#orgSuggest");
     if (sug) {
@@ -1717,8 +1796,28 @@
     const btn = $("#orgSaveBtn"); btn.disabled = true; btn.textContent = "Saving…";
     const saved = [], failed = [];
     for (const id of ids) {
+      // v36: work out the new values, but leave anything you did not touch
+      // exactly as it was — no more wiping collections and tags by accident.
+      const item = state.items.find((x) => x.id === id);
+      const body = {};
+      if (state.orgSingle) {
+        if (item && (item.collection || "") !== state.orgCol) body.collection = state.orgCol;
+        const cur = [...(item?.tags || [])].sort().join("|");
+        const want = [...state.orgTags].sort().join("|");
+        if (cur !== want) body.tags = [...state.orgTags];
+      } else {
+        if (state.orgColTouched && item && (item.collection || "") !== state.orgCol) body.collection = state.orgCol;
+        const own = [...(item?.tags || [])];
+        if (state.orgTagsClear) {
+          if (own.length) body.tags = [];
+        } else if (state.orgTags.size) {
+          const merged = [...new Set([...own, ...state.orgTags])];
+          if (merged.length !== own.length) body.tags = merged;
+        }
+      }
+      if (!Object.keys(body).length) { saved.push(id); continue; } // nothing to change
       try {
-        const updated = await api(`/api/items/${id}`, { method: "PATCH", body: { collection: state.orgCol, tags: [...state.orgTags] } });
+        const updated = await api(`/api/items/${id}`, { method: "PATCH", body });
         const idx = state.items.findIndex((i) => i.id === id);
         if (idx >= 0) state.items[idx] = updated;
         saved.push(id);
@@ -2779,6 +2878,7 @@
     $("#singleUrl").dispatchEvent(new Event("input"));
     const sn = $("#sharedNote"); if (sn) sn.hidden = !shared;
     $("#singleUrl").focus();
+    renderBulkChips(); // v36: the collection/tag chips are always up to date
     updateDock();
   }
 
@@ -2886,6 +2986,7 @@
       $$(".tab").forEach((x) => x.classList.toggle("active", x === t));
       $("#tab-single").hidden = t.dataset.tab !== "single";
       $("#tab-bulk").hidden = t.dataset.tab !== "bulk";
+      if (t.dataset.tab === "bulk") renderBulkChips();
     }));
     $("#singleUrl").addEventListener("input", (e) => {
       const p = detectPlatform(e.target.value.trim());
@@ -2936,6 +3037,9 @@
     if (selectBtn) selectBtn.addEventListener("click", () => setSelecting(!state.selecting));
     const bulkCancel = $("#bulkCancelBtn"); if (bulkCancel) bulkCancel.addEventListener("click", () => setSelecting(false));
     const bulkOrg = $("#bulkOrganizeBtn"); if (bulkOrg) bulkOrg.addEventListener("click", () => { if (state.selected.size) openOrg([...state.selected]); });
+    const bulkAll = $("#bulkSelectAllBtn"); if (bulkAll) bulkAll.addEventListener("click", selectAllVisible);
+    const orgClearTags = $("#orgClearTagsBtn");
+    if (orgClearTags) orgClearTags.addEventListener("click", () => { state.orgTagsClear = !state.orgTagsClear; state.orgTags.clear(); renderOrg(); });
     const bulkFavBtn = $("#bulkFavBtn"); if (bulkFavBtn) bulkFavBtn.addEventListener("click", bulkFav);
     const orgSave = $("#orgSaveBtn"); if (orgSave) orgSave.addEventListener("click", saveOrg);
     const createCol = () => {
