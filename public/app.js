@@ -536,7 +536,11 @@
     // so Reels must use the video player. Only plain video/post links get a fallback.
     if (item.media_type === "reel") return { primary: video, alt: "" };
     if (item.media_type === "video") return { primary: video, alt: post };
-    return { primary: safeUrl(item.embed_url) || post, alt: "" };
+    // v37: the stored embed may point at Facebook's login page (a share link
+    // resolved without a session) — rebuild it from the share link instead.
+    const stored = safeUrl(item.embed_url);
+    const storedIsLogin = stored && /facebook\.com\/login/i.test(decodeURIComponent(stored));
+    return { primary: storedIsLogin ? post : (stored || post), alt: "" };
   }
 
   function stampVersion() {
