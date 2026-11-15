@@ -517,8 +517,18 @@
     }
   }
 
-  function facebookEmbeds(item) {
+  // v37: a Facebook share link can resolve to the login page when it is opened
+  // without a session. The post itself may still be public, so the original
+  // share link is the better one to use — the browser can resolve it.
+  function bestUrl(item) {
     const canonical = safeUrl(item.canonical_url || item.url);
+    if (item && item.platform === "facebook" && canonical && /facebook\.com\/login/i.test(canonical)) {
+      return safeUrl(item.url) || canonical;
+    }
+    return canonical;
+  }
+  function facebookEmbeds(item) {
+    const canonical = bestUrl(item);
     if (!canonical) return { primary: safeUrl(item.embed_url), alt: "" };
     const post = "https://www.facebook.com/plugins/post.php?" + new URLSearchParams({ href: canonical, show_text: "true" });
     const video = "https://www.facebook.com/plugins/video.php?" + new URLSearchParams({ href: canonical, show_text: "false", autoplay: "true", mute: "0" });
@@ -616,7 +626,7 @@
       embed: originalEmbed,
       platform: item.platform,
       media_type: item.media_type,
-      url: safeUrl(item.canonical_url || item.url),
+      url: bestUrl(item),
     }];
     const backupEmbed = safeUrl(item.backup_embed_url);
     if (backupEmbed) {

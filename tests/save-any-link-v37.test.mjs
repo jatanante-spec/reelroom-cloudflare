@@ -129,3 +129,13 @@ test("the app knows about websites everywhere", () => {
   assert.match(html, /<option value="page">Page<\/option>/);
   assert.match(css, /\.plat-dot\.web/);
 });
+
+test("v37: a Facebook share link is never stored as Facebook's login page", async () => {
+  // a share link that resolves to /login/ keeps the share link
+  const parse = readFileSync(join(root, "lib", "parse.mjs"), "utf8");
+  assert.match(parse, /if \(\/\^\\\/\(login\|checkpoint\|consent\|privacy\|home\\\.php\)\/i\.test\(path\)\)/);
+  assert.ok(parse.includes("canonical_url: shareUrl.slice(0, 2000)"), "the share link is not kept");
+  // and the app prefers the share link over the login page
+  assert.ok(appjs.includes("function bestUrl(item)"), "bestUrl is missing");
+  assert.ok(appjs.includes("/login/i.test(canonical)"), "the login-page check is missing in the app");
+});
