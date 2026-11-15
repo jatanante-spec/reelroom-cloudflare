@@ -1106,14 +1106,16 @@
     const on = sound.status === "on";
     const hostable = canHostUnmute(sound.platform);
     const label = on ? "Sound on" : (sound.status === "trying" ? "Checking sound" : (sound.fallback && hostable ? "Sound?" : (hostable ? "Sound off" : "Sound")));
-    const icon = on ? "🔊" : "🔇";
+    const icon = on ? "🔊" : ((sound.status === "trying" || sound.fallback || !hostable) ? "🔈" : "🔇");
     if (helper) {
       const current = currentList()[state.playerIndex];
       helper.hidden = !(big && !state.moreOpen && current && !isPostItem(current) && !isLinkItem(current));
       if (helperText) helperText.textContent = label;
       if (helperIcon) helperIcon.textContent = icon;
       helper.setAttribute("aria-pressed", String(on));
-      helper.setAttribute("aria-label", on ? "Mute sound" : (hostable ? "Turn sound on" : "Sound options"));
+      const helpLabel = on ? "Mute sound" : (sound.status === "trying" ? "Checking sound" : (sound.fallback ? "Sound unconfirmed; try sound" : (hostable ? "Turn sound on" : "Sound options")));
+      helper.setAttribute("aria-label", helpLabel);
+      helper.title = helpLabel;
     }
     if (hint) {
       // Do not cover the picture with a persistent fallback message.
@@ -1127,9 +1129,10 @@
         : "";
     }
     if (fsBtn) {
-      fsBtn.textContent = icon + (on ? " Sound on" : " Sound");
+      fsBtn.textContent = icon;
       fsBtn.setAttribute("aria-pressed", String(on));
-      fsBtn.title = on ? "Mute sound (S)" : "Enable sound (S)";
+      fsBtn.title = on ? "Mute sound (S)" : (hostable ? "Enable sound (S)" : "Sound options (S)");
+      fsBtn.setAttribute("aria-label", fsBtn.title);
     }
     if (actionBtn) {
       actionBtn.textContent = icon + (on ? " Sound on" : " Enable sound");
