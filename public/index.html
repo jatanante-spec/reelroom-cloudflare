@@ -74,6 +74,7 @@
       <button class="side-link platform-link" data-platform="tiktok"><span class="plat-dot tt"></span> TikTok <span class="count" data-count="tiktok"></span></button>
       <button class="side-link platform-link" data-platform="instagram"><span class="plat-dot ig"></span> Instagram <span class="count" data-count="instagram"></span></button>
       <button class="side-link platform-link" data-platform="facebook"><span class="plat-dot fb"></span> Facebook <span class="count" data-count="facebook"></span></button>
+      <button class="side-link platform-link" data-platform="web"><span class="plat-dot web"></span> Websites <span class="count" data-count="web"></span></button>
     </div>
     <div class="side-section">
       <div class="side-heading">Collections</div>
@@ -99,6 +100,7 @@
         <button class="chip" data-platform="tiktok">TikTok</button>
         <button class="chip" data-platform="instagram">Instagram</button>
         <button class="chip" data-platform="facebook">Facebook</button>
+        <button class="chip" data-platform="web">Web</button>
       </div>
       <!-- v34: one slim sort chip replaces the old dropdown row -->
       <div class="menu-wrap sort-wrap">
@@ -397,6 +399,24 @@
   <button class="btn btn-small" id="bulkCancelBtn" aria-label="Cancel selection">✕</button>
 </div>
 
+<!-- v37: saved website sheet -->
+<div class="modal-backdrop" id="linkModal" hidden>
+  <div class="modal link-modal" role="dialog" aria-modal="true" aria-label="Saved link">
+    <div class="modal-head">
+      <h2 id="linkTitle">Saved link</h2>
+      <button class="icon-btn" data-close="linkModal">✕</button>
+    </div>
+    <p class="org-sub" id="linkSub"></p>
+    <div class="link-frame" id="linkFrameWrap" hidden>
+      <iframe id="linkFrame" title="Saved page" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+    </div>
+    <p class="link-note" id="linkNote"></p>
+    <div class="link-actions">
+      <a class="btn btn-primary" id="linkOpenBtn" target="_blank" rel="noopener noreferrer">Open in browser</a>
+      <button class="btn" id="linkCopyBtn">Copy link</button>
+    </div>
+  </div>
+</div>
 <!-- v26: organize bottom sheet -->
 <div class="modal-backdrop" id="orgModal" hidden>
   <div class="modal org-modal" role="dialog" aria-modal="true" aria-label="Organize">
@@ -473,6 +493,7 @@
           <option value="reel">Reel</option>
           <option value="image">Image post</option>
           <option value="post">Post</option>
+          <option value="page">Page</option>
         </select>
       </label>
       <label class="check-label"><input type="checkbox" id="editFavorite"> Favorite</label>

@@ -18,7 +18,7 @@ const css = read("styles.css");
 const manifest = JSON.parse(read("manifest.webmanifest"));
 
 test("the app says the current version", () => {
-  assert.match(appjs, /const REELROOM_VERSION = "v36";/);
+  assert.match(appjs, /const REELROOM_VERSION = "v37";/);
 });
 
 test("a shared link is saved straight away, not just dropped into the sheet", () => {

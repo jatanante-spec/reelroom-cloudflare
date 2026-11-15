@@ -16,7 +16,7 @@ test("long-press cannot select card/popup text, but inputs stay selectable", () 
 });
 
 test("Back closes the open popup via a history guard, not exit app", () => {
-  assert.match(appjs, /const GUARD_MODALS = \["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal"\];/);
+  assert.match(appjs, /const GUARD_MODALS = \["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal", "linkModal"\];/);
   assert.match(appjs, /history\.pushState\(\{ reelroom: "modal-guard" \}, "", location\.href\);/);
   assert.match(appjs, /if \(!state\.modalGuard\) return;/);
   assert.match(appjs, /const m = topGuardModal\(\);/);

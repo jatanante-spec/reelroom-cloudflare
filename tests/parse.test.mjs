@@ -63,8 +63,20 @@ test("facebook reel", async () => {
   assert.match(p.embed_url_alt, /plugins\/video\.php/);
 });
 
-test("unsupported", async () => {
-  await assert.rejects(() => parseUrl("https://example.com/video"), /Unsupported/);
+test("v37: any website is saved as a link, not as a video", async () => {
+  const p = await parseUrl("https://example.com/video");
+  assert.equal(p.platform, "web");
+  assert.equal(p.media_type, "page");
+  assert.equal(p.embed_url, null);
+  assert.equal(p.title, "example.com");
+});
+
+test("v37: only real web addresses are accepted", async () => {
+  await assert.rejects(() => parseUrl("not-a-url"), /doesn't look like a web address/);
+  await assert.rejects(() => parseUrl("file:///etc/passwd"), /Only web links/);
+  await assert.rejects(() => parseUrl("javascript:alert(1)"), /Only web links/);
+  await assert.rejects(() => parseUrl("http://127.0.0.1:8080/admin"), /private address/);
+  await assert.rejects(() => parseUrl("http://192.168.1.10/"), /private address/);
 });
 
 test("missing scheme", async () => {

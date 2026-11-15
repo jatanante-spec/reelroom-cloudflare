@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const REELROOM_VERSION = "v36";
+  const REELROOM_VERSION = "v37";
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -66,9 +66,9 @@
     clipUrl: "",
   };
 
-  const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
-  const PLATFORM_ICON = { youtube: "▶", tiktok: "♪", instagram: "◉", facebook: "f" };
-  const TYPE_LABEL = { video: "Video", short: "Short", reel: "Reel", image: "Image", post: "Post" };
+  const PLATFORM_LABEL = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook", web: "Website" };
+  const PLATFORM_ICON = { youtube: "▶", tiktok: "♪", instagram: "◉", facebook: "f", web: "🌐" };
+  const TYPE_LABEL = { video: "Video", short: "Short", reel: "Reel", image: "Image", post: "Post", page: "Page" };
 
   // ---------- utils ----------
   function esc(s) {
@@ -118,7 +118,16 @@
   // ---------- data ----------
   async function loadItems() {
     try {
-      state.items = await api("/api/items");
+      const fresh = await api("/api/items");
+      // v37: a background refresh must not undo a change made a moment ago
+      // (marking a link as visited, for example) — keep the newer copy until
+      // the server has caught up with it.
+      const local = new Map(state.items.map((i) => [i.id, i]));
+      state.items = fresh.map((i) => {
+        const old = local.get(i.id);
+        if (old && String(old.updated_at || "") > String(i.updated_at || "")) return old;
+        return i;
+      });
       render();
       schedulePoll();
     } catch (e) { toast(e.message); }
@@ -192,7 +201,7 @@
   function filtered() {
     let list = state.items.slice();
     if (state.view === "favorites") list = list.filter((i) => i.favorite);
-    if (state.view === "unwatched") list = list.filter((i) => !i.watched);
+    if (state.view === "unwatched") list = list.filter((i) => !i.watched && !isLinkItem(i));
     if (state.platform) list = list.filter((i) => i.platform === state.platform);
     if (state.collection) list = list.filter((i) => i.collection === state.collection);
     if (state.tag) list = list.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === state.tag.toLowerCase()));
@@ -354,6 +363,16 @@
   }
 
   function thumbHtml(item) {
+    // v37: a saved website shows a globe, not a play button.
+    if (isLinkItem(item)) {
+      return `<div class="thumb thumb-web">
+        <span class="web-globe" aria-hidden="true">🌐</span>
+        <span class="badge web">Website</span>
+        <span class="type-badge">Page</span>
+        ${item.visited ? '<span class="watched-mark">✓ visited</span>' : ""}
+        <div class="play-overlay link-open"><span>↗</span></div>
+      </div>`;
+    }
     const thumb = thumbnailFor(item);
     const ph = `<div class="thumb-placeholder ph-${item.platform}"><span class="big">${PLATFORM_ICON[item.platform] || "▶"}</span><span>${esc(PLATFORM_LABEL[item.platform] || item.platform)}</span></div>`;
     const img = thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : "";
@@ -375,7 +394,7 @@
         ${thumbHtml(item)}
         <div class="card-body">
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
-          <div class="card-author">${esc(item.author || PLATFORM_LABEL[item.platform] || "")} ${item.watched ? '<span class="watched-mark">✓ watched</span>' : ""}</div>
+          <div class="card-author">${esc(item.author || item.web_host || PLATFORM_LABEL[item.platform] || "")} ${isLinkItem(item) ? (item.visited ? '<span class="watched-mark">✓ visited</span>' : "") : (item.watched ? '<span class="watched-mark">✓ watched</span>' : "")}</div>
           <div class="card-meta">
             ${(item.tags || []).slice(0, 3).map((t) => `<span class="mini-tag">#${esc(t)}</span>`).join("")}
             ${item.collection ? `<span class="mini-tag">📁 ${esc(item.collection)}</span>` : ""}
@@ -412,12 +431,18 @@
           return;
         }
         if (state.selecting) { toggleSel(id); return; }
+        const tapped = state.items.find((i) => i.id === id);
+        if (isLinkItem(tapped)) { openLink(id); return; }   // v37
         openPlayer(id);
       });
       card.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (state.selecting) toggleSel(id); else openPlayer(id);
+          if (state.selecting) toggleSel(id);
+          else {
+            const kd = state.items.find((i) => i.id === id);
+            if (isLinkItem(kd)) openLink(id); else openPlayer(id);   // v37
+          }
         }
       });
       // v26: long-press (~0.5s) opens Organize; right-click too on desktop.
@@ -1453,7 +1478,9 @@
 
   function stepPlayer(delta) {
     const list = currentList();
-    const next = state.playerIndex + delta;
+    // v37: links are not videos — the player steps over them
+    let next = state.playerIndex + delta;
+    while (next >= 0 && next < list.length && isLinkItem(list[next])) next += delta;
     if (next < 0 || next >= list.length) return;
     const prevItem = list[state.playerIndex];
     cancelCountdown();
@@ -1516,8 +1543,12 @@
     if (u.includes("tiktok.com")) return "tiktok";
     if (u.includes("instagram.com")) return "instagram";
     if (u.includes("facebook.com") || u.includes("fb.watch")) return "facebook";
+    // v37: any other web address is saved as a link, not as a video
+    if (/^https?:\/\//i.test(String(url || ""))) return "web";
     return null;
   }
+  // v37: a saved website is a link — the video player must never open it.
+  function isLinkItem(item) { return !!item && item.platform === "web"; }
 
   // v23: highlight + scroll to a newly added card so it is easy to find.
   function highlightAdded(id) {
@@ -1651,6 +1682,48 @@
       if (!$("#playerModal").hidden && state.playerIndex >= 0) renderPlayer(currentList()[state.playerIndex]);
       toast("Saved");
     } catch (e) { toast(e.message); }
+  }
+
+  // ---- v37: a saved website ----
+  function hostOf(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return String(url || "").slice(0, 60); }
+  }
+  async function markVisited(item) {
+    if (!isLinkItem(item) || item.visited) return;
+    try {
+      const updated = await api(`/api/items/${item.id}`, { method: "PATCH", body: { visited: true } });
+      const idx = state.items.findIndex((i) => i.id === item.id);
+      if (idx >= 0) state.items[idx] = { ...state.items[idx], ...updated };
+      render();
+    } catch { /* a missed tick is not worth interrupting the user */ }
+  }
+  function openLink(id) {
+    const item = state.items.find((i) => i.id === id);
+    if (!item) return;
+    const url = safeUrl(item.canonical_url || item.url);
+    if (!url) return;
+    const frameable = item.web_frameable === true;
+    const title = $("#linkTitle"), sub = $("#linkSub"), note = $("#linkNote");
+    const wrap = $("#linkFrameWrap"), frame = $("#linkFrame"), openBtn = $("#linkOpenBtn");
+    if (title) title.textContent = displayTitle(item);
+    if (sub) sub.textContent = [item.web_host || hostOf(url), item.collection].filter(Boolean).join(" · ");
+    if (openBtn) { openBtn.href = url; openBtn.setAttribute("href", url); }
+    if (wrap) wrap.hidden = !frameable;
+    if (frame) frame.src = frameable ? url : "about:blank";
+    if (note) {
+      note.textContent = frameable
+        ? "Showing the page inside ReelRoom. Use the button below to open it in your browser instead."
+        : "This site does not allow pages to be shown inside apps, so it opens in your browser.";
+    }
+    state.linkId = id;
+    $("#linkModal").hidden = false;
+    updateDock();
+    markVisited(item);
+    if (!frameable) {
+      // v37: fall back to the browser straight away — no blank box, no guessing.
+      try { window.open(url, "_blank", "noopener"); } catch {}
+      toast("Opened in your browser");
+    }
   }
 
   // ---- v26: quick organize (collections / tags) ----
@@ -2346,7 +2419,7 @@
     const bar = $("#upnextBar"), listBox = $("#upnextList");
     if (!bar || !listBox) return;
     const list = currentList();
-    const upcoming = list.slice(state.playerIndex + 1, state.playerIndex + 5);
+    const upcoming = list.slice(state.playerIndex + 1, state.playerIndex + 8).filter((i) => !isLinkItem(i)).slice(0, 4);
     listBox.innerHTML = upcoming.length
       ? upcoming.map((u, k) => {
           const th = thumbnailFor(u);
@@ -3038,6 +3111,26 @@
     const bulkCancel = $("#bulkCancelBtn"); if (bulkCancel) bulkCancel.addEventListener("click", () => setSelecting(false));
     const bulkOrg = $("#bulkOrganizeBtn"); if (bulkOrg) bulkOrg.addEventListener("click", () => { if (state.selected.size) openOrg([...state.selected]); });
     const bulkAll = $("#bulkSelectAllBtn"); if (bulkAll) bulkAll.addEventListener("click", selectAllVisible);
+    // v37: the saved-link sheet
+    const closeLink = () => {
+      const f = $("#linkFrame"); if (f) f.src = "about:blank";
+      state.linkId = null;
+    };
+    const linkSheet = $("#linkModal");
+    if (linkSheet) linkSheet.addEventListener("click", (e) => {
+      if (e.target === linkSheet || e.target.closest("[data-close='linkModal']")) closeLink();
+    });
+    const linkCopy = $("#linkCopyBtn");
+    if (linkCopy) linkCopy.addEventListener("click", async () => {
+      const url = $("#linkOpenBtn")?.getAttribute("href") || "";
+      try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+      catch { toast("Could not copy the link"); }
+    });
+    const linkOpen = $("#linkOpenBtn");
+    if (linkOpen) linkOpen.addEventListener("click", () => {
+      const cur = state.items.find((i) => i.id === state.linkId);
+      if (cur) markVisited(cur);
+    });
     const orgClearTags = $("#orgClearTagsBtn");
     if (orgClearTags) orgClearTags.addEventListener("click", () => { state.orgTagsClear = !state.orgTagsClear; state.orgTags.clear(); renderOrg(); });
     const bulkFavBtn = $("#bulkFavBtn"); if (bulkFavBtn) bulkFavBtn.addEventListener("click", bulkFav);
@@ -3113,7 +3206,7 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkClipboard(); updateDock(); } });
     try {
       const mo = new MutationObserver(updateDock);
-      ["playerModal","addModal","editModal","orgModal","jumpModal","renameModal","installModal","loginModal","sidebar"].forEach((id) => {
+      ["playerModal","addModal","editModal","orgModal","jumpModal","renameModal","installModal","loginModal","linkModal","sidebar"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden", "class"] });
       });
@@ -3305,7 +3398,7 @@
     }
     window.addEventListener("message", onPlayerMessage);
     // v31: phone Back closes an open popup instead of leaving the app.
-    const GUARD_MODALS = ["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal"];
+    const GUARD_MODALS = ["renameModal", "jumpModal", "orgModal", "editModal", "addModal", "installModal", "loginModal", "linkModal"];
     const anyGuardModal = () => GUARD_MODALS.some((id) => { const el = document.getElementById(id); return el && !el.hidden; });
     const topGuardModal = () => GUARD_MODALS.find((id) => { const el = document.getElementById(id); return el && !el.hidden; });
     // v32: keep Tab / D-pad focus inside the open popup, and restore it on close.
