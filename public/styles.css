@@ -1327,3 +1327,12 @@ body:not(.tv-mode) .player-shell .fs-bar #fsSoundBtn { position: relative; }
 body:not(.tv-mode) .player-shell .fs-bar #fsSoundBtn::after {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
 }
+
+/* Big view on phones and tablets: let the top buttons fade just like true
+   fullscreen. Tap the stage or the top edge to bring them back. */
+body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-controls-toggle,
+body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-shell-fullscreen,
+body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-bar,
+body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-exit {
+  opacity: 0; visibility: hidden; pointer-events: none;
+}
