@@ -17,6 +17,7 @@
     playerIndex: -1,
     playerQueue: null, // keep the open viewing order stable when organizing changes a filter
     playerBaseQueue: null, // original viewing order while shuffle is enabled
+    forYouOpen: false, forYouMode: "mix", forYouQueue: [], forYouIndex: 0, forYouPlaying: false,
     editingId: null,
     pollTimer: null,
     fbUseAlt: false,
@@ -253,6 +254,9 @@
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
     $("#emptyState").hidden = list.length > 0;
     $("#grid").hidden = list.length === 0;
+    document.body.classList.toggle("for-you-open", state.forYouOpen);
+    $("#fyPanel").hidden = !state.forYouOpen;
+    if (state.forYouOpen) renderForYou();
   }
 
   function renderCounts() {
@@ -271,6 +275,7 @@
       ? cols.map((c) => `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}</button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`).join("")
       : `<div class="side-footer" style="margin:0;padding:4px 12px;">No collections yet</div>`;
     wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
+      if (state.forYouOpen) closeForYou();
       state.collection = state.collection === b.dataset.collection ? "" : b.dataset.collection;
       render();
       closeSidebar();
@@ -327,6 +332,7 @@
       ? tags.map((t) => `<button class="tag-pill ${state.tag.toLowerCase() === t.toLowerCase() ? "active" : ""}" data-tag="${esc(t)}">#${esc(t)}</button>`).join("")
       : `<span class="side-footer" style="margin:0;padding:0 4px;">No tags yet</span>`;
     wrap.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
+      if (state.forYouOpen) closeForYou();
       state.tag = state.tag === b.dataset.tag ? "" : b.dataset.tag;
       render();
       closeSidebar();
@@ -492,6 +498,97 @@
     });
   }
 
+  // For You uses only the existing library on this device. No external AI or
+  // media downloads: mix explicit favorites, never-opened and older saves.
+  function forYouVideos() { return state.items.filter((i) => !isLinkItem(i) && !isPostItem(i)); }
+  function neverOpened(i) { return !i.watched && !i.last_opened_at && !(Number(i.watch_seconds) > 0) && !(Number(i.progress) > 0); }
+  function oldSave(i) { const t = Date.parse(i.created_at || ""); return Number.isFinite(t) && Date.now() - t >= 30 * 86400000; }
+  function randomOrder(items) {
+    const a = items.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function forYouReason(item, category) {
+    if (category === "unwatched") return "Not watched yet";
+    if (category === "forgotten") return "Saved a while ago";
+    if (category === "favorites") return "One of your favorites";
+    if (category === "collection" && item.collection) return `From ${item.collection}`;
+    return "From your saved videos";
+  }
+  function buildForYou(mode) {
+    const all = forYouVideos();
+    if (mode !== "mix") {
+      const f = mode === "unwatched" ? neverOpened : mode === "forgotten" ? oldSave : (i) => !!i.favorite;
+      return randomOrder(all.filter(f)).map((item) => ({ id: item.id, reason: forYouReason(item, mode) }));
+    }
+    const favorites = all.filter(i => i.favorite);
+    const collections = new Set(favorites.map(i => i.collection).filter(Boolean));
+    const buckets = [
+      ["unwatched", randomOrder(all.filter(neverOpened))],
+      ["forgotten", randomOrder(all.filter(oldSave))],
+      ["favorites", randomOrder(favorites)],
+      ["collection", randomOrder(all.filter(i => i.collection && collections.has(i.collection)))],
+      ["saved", randomOrder(all)]
+    ];
+    const picked = new Set(), out = [];
+    let remaining = true;
+    while (remaining) {
+      remaining = false;
+      for (const [category, bucket] of buckets) {
+        while (bucket.length && picked.has(bucket[bucket.length - 1].id)) bucket.pop();
+        if (!bucket.length) continue;
+        const item = bucket.pop(); picked.add(item.id);
+        out.push({ id: item.id, reason: forYouReason(item, category) });
+        remaining = true;
+      }
+    }
+    return out;
+  }
+  function resetForYou(mode) {
+    state.forYouMode = mode; state.forYouQueue = buildForYou(mode); state.forYouIndex = 0; renderForYou();
+  }
+  function renderForYou() {
+    if (!state.forYouOpen) return;
+    const ids = new Set(state.items.map(i => i.id));
+    state.forYouQueue = state.forYouQueue.filter(v => ids.has(v.id));
+    state.forYouIndex = Math.max(0, Math.min(state.forYouIndex, state.forYouQueue.length - 1));
+    $$("[data-fy-mode]").forEach(b => { const on = b.dataset.fyMode === state.forYouMode; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+    const entry = state.forYouQueue[state.forYouIndex];
+    const item = entry && state.items.find(i => i.id === entry.id);
+    $("#fyContent").hidden = !item; $("#fyEmpty").hidden = !!item;
+    if (!item) {
+      $("#fyEmpty").textContent = state.forYouMode === "favorites" ? "No favorite videos yet. Star a video to see it here." : state.forYouMode === "unwatched" ? "No never-opened videos right now." : state.forYouMode === "forgotten" ? "No videos saved more than 30 days ago yet." : "Save some videos and they’ll appear here.";
+      return;
+    }
+    $("#fyThumbnail").innerHTML = thumbHtml(item);
+    let reason = entry.reason;
+    if ((reason === "Not watched yet" && !neverOpened(item)) ||
+        (reason === "One of your favorites" && !item.favorite) ||
+        (reason.startsWith("From ") && reason !== "From your saved videos" && reason !== `From ${item.collection}`)) reason = "From your saved videos";
+    $("#fyReason").textContent = "✦ " + reason;
+    $("#fyItemTitle").textContent = displayTitle(item);
+    $("#fyMeta").textContent = [item.author, item.collection, PLATFORM_LABEL[item.platform]].filter(Boolean).join(" · ");
+    const favorite = $("#fyFavorite"); favorite.textContent = item.favorite ? "★ Favorite" : "☆ Favorite";
+    favorite.classList.toggle("on", !!item.favorite); favorite.setAttribute("aria-pressed", String(!!item.favorite));
+    favorite.setAttribute("aria-label", item.favorite ? "Remove from favorites" : "Add to favorites");
+    $("#fyProgress").textContent = `${state.forYouIndex + 1} of ${state.forYouQueue.length}`;
+    $("#fyPrev").disabled = state.forYouIndex === 0;
+    $("#fyNext").disabled = state.forYouIndex === state.forYouQueue.length - 1;
+  }
+  function openForYou() {
+    if (state.selecting) setSelecting(false);
+    state.forYouOpen = true;
+    try { history.pushState({ reelroom: "for-you" }, "", location.href); } catch {}
+    resetForYou("mix"); render(); closeSidebar(); scrollToTop();
+    $("#fyBack").focus({ preventScroll: true });
+  }
+  function closeForYou(fromPop = false) {
+    if (!state.forYouOpen) return;
+    state.forYouOpen = false; render();
+    if (!fromPop && history.state?.reelroom === "for-you") { try { history.back(); } catch {} }
+    $("#fyStart").focus({ preventScroll: true });
+  }
+
   // ---------- player ----------
   function currentList() {
     if (!$("#playerModal").hidden && state.playerQueue) {
@@ -534,8 +631,9 @@
     toast(prefs.shuffle ? "Shuffle on" : "Shuffle off");
   }
 
-  function openPlayer(id, fromRail) {
-    let list = currentList();
+  function openPlayer(id, fromRail, forYouIds = null) {
+    const byId = new Map(state.items.map(item => [item.id, item]));
+    let list = forYouIds ? forYouIds.map(id => byId.get(id)).filter(Boolean) : currentList();
     let idx = list.findIndex((i) => i.id === id);
     if (idx === -1 && fromRail) {
       // the item may be outside the current filter — clear filters so prev/next still work
@@ -551,7 +649,9 @@
     state.fbUseAlt = false;
     state.useBackup = null;
     $("#playerModal").hidden = false;
-    if (prefs.shuffle) setPlayerShuffleOrder(list, id);
+    state.forYouPlaying = !!forYouIds;
+    if (forYouIds) state.playerQueue = list.map(item => item.id);
+    else if (prefs.shuffle) setPlayerShuffleOrder(list, id);
     document.body.style.overflow = "hidden";
     hideUndo();
     if (!state.playerHistoryActive) armPlayerHistory();
@@ -1650,6 +1750,11 @@
 
   function closePlayer(opts = {}) {
     const item = currentList()[state.playerIndex];
+    if (state.forYouPlaying && item && state.forYouOpen) {
+      const index = state.forYouQueue.findIndex(v => v.id === item.id);
+      if (index >= 0) state.forYouIndex = index;
+    }
+    state.forYouPlaying = false;
     cancelCountdown();
     stopTracking();
     clearAutoplayNudges();
@@ -1675,6 +1780,7 @@
     state.playerIndex = -1;
     state.playerQueue = null;
     state.playerBaseQueue = null;
+    if (state.forYouOpen) renderForYou();
     state.igActive = false;
     resetBridge("");
     clearTimeout(sound.confirmTimer);
@@ -1690,7 +1796,8 @@
       state.playerHistoryActive = false;
     }
     const back = state.returnFocusId && document.querySelector(`#grid .card[data-id="${state.returnFocusId}"]`);
-    if (back) back.focus();
+    if (state.forYouOpen) $("#fyPlay").focus({ preventScroll: true });
+    else if (back) back.focus();
   }
 
   function stepPlayer(delta) {
@@ -3355,14 +3462,30 @@
       const now = Date.now();
       if (now - lastBrandTap < 350) scrollToTop();
       lastBrandTap = now;
+      if (state.forYouOpen) closeForYou();
       state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar();
     });
+
+    $("#fyStart").addEventListener("click", openForYou);
+    $("#fyBack").addEventListener("click", () => closeForYou());
+    $$("[data-fy-mode]").forEach(b => b.addEventListener("click", () => resetForYou(b.dataset.fyMode)));
+    $("#fyNext").addEventListener("click", () => { if (state.forYouIndex < state.forYouQueue.length - 1) { state.forYouIndex++; renderForYou(); } });
+    $("#fyPrev").addEventListener("click", () => { if (state.forYouIndex > 0) { state.forYouIndex--; renderForYou(); } });
+    $("#fyRemix").addEventListener("click", () => resetForYou(state.forYouMode));
+    $("#fyFavorite").addEventListener("click", async () => { const v = state.forYouQueue[state.forYouIndex], item = v && state.items.find(i => i.id === v.id); if (item) await toggleFav(item); });
+    $("#fyPlay").addEventListener("click", () => { if (Date.now() - (state.fySwipeAt || 0) < 500) return; const v = state.forYouQueue[state.forYouIndex]; if (v) openPlayer(v.id, false, state.forYouQueue.map(x => x.id)); });
+    let fyTouch = null;
+    $("#fyPoster").addEventListener("touchstart", e => { if (e.touches.length === 1) fyTouch = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }, {passive:true});
+    $("#fyPoster").addEventListener("touchend", e => { const t = e.changedTouches[0], start = fyTouch; fyTouch = null; if (!start || !t) return; const dy=t.clientY-start.y, dx=t.clientX-start.x; if (Math.abs(dy)>45 && Math.abs(dy)>Math.abs(dx)*1.4) { state.fySwipeAt=Date.now(); state.forYouIndex=Math.max(0, Math.min(state.forYouQueue.length-1, state.forYouIndex+(dy<0?1:-1))); renderForYou(); } }, {passive:true});
+    $("#fyPoster").addEventListener("touchcancel", () => { fyTouch = null; }, {passive:true});
+    window.addEventListener("popstate", e => { if (state.forYouOpen && $("#playerModal").hidden && e.state?.reelroom !== "for-you") closeForYou(true); });
+    $("#searchInput").addEventListener("focus", () => { if (state.forYouOpen) closeForYou(); });
 
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
     $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; syncFlip(); render(); });
 
-    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
-    $$(".platform-link").forEach((b) => b.addEventListener("click", () => { state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
+    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
+    $$(".platform-link").forEach((b) => b.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
     $$("#platformChips .chip").forEach((c) => c.addEventListener("click", () => { state.platform = c.dataset.platform; render(); }));
 
     $("#moreBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#moreMenu").hidden = !$("#moreMenu").hidden; });
@@ -3441,7 +3564,7 @@
     const compactBtn = $("#compactBtn");
     if (compactBtn) compactBtn.addEventListener("click", () => { prefs.compact = !prefs.compact; savePrefs(); applyCompact(); });
     const flipBtn = $("#flipBtn"); if (flipBtn) flipBtn.addEventListener("click", flipOrder);
-    const dockJump = $("#dockJump"); if (dockJump) dockJump.addEventListener("click", openJump);
+    const dockJump = $("#dockJump"); if (dockJump) dockJump.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); openJump(); });
     const rail = $("#jumpRail");
     if (rail) {
       let dragging = false;
@@ -3530,7 +3653,7 @@
     const dock = $("#dock");
     if (dock) {
       dock.addEventListener("focusin", () => { state.dockHidden = false; dock.classList.remove("dock-hidden"); });
-      $("#dockHome").addEventListener("click", () => { state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); });
+      $("#dockHome").addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); });
       $("#dockSearch").addEventListener("click", () => { scrollToTop(); openTopSearch(); });
       $("#dockAdd").addEventListener("click", openAddFromTap);
       $("#dockTop").addEventListener("click", scrollToTop);

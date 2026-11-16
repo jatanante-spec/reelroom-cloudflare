@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-single-sound-control">
+<link rel="stylesheet" href="styles.css?v=38-for-you">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -92,6 +92,33 @@
       <span>👋 You're viewing a <strong>demo collection</strong>. Add your own links, then clear the demo anytime.</span>
       <button class="btn btn-small" id="clearDemoBtn">Clear demo</button>
     </div>
+
+    <section class="for-you-invite" id="fyInvite" aria-label="Discover saved videos">
+      <div><span class="fy-eyebrow">✦ YOUR SAVED VIDEOS, REDISCOVERED</span><h2>For You</h2><p>A fresh mix of videos you’ve saved.</p></div>
+      <button class="fy-start" id="fyStart" type="button">Explore For You <span aria-hidden="true">→</span></button>
+    </section>
+    <section class="for-you-panel" id="fyPanel" hidden aria-labelledby="fyTitle">
+      <div class="fy-heading"><button class="fy-back" id="fyBack" type="button">← Your library</button><span class="fy-eyebrow">✦ FOR YOU</span></div>
+      <h1 id="fyTitle">A little something for you.</h1>
+      <p class="fy-intro">A fresh mix from your saved videos. Your library order stays the same.</p>
+      <div class="fy-chips" role="group" aria-label="Choose a discovery mix">
+        <button class="fy-chip" data-fy-mode="mix" aria-pressed="true">For you</button>
+        <button class="fy-chip" data-fy-mode="forgotten" aria-pressed="false">Rediscover</button>
+        <button class="fy-chip" data-fy-mode="unwatched" aria-pressed="false">Unwatched</button>
+        <button class="fy-chip" data-fy-mode="favorites" aria-pressed="false">Favorites</button>
+      </div>
+      <div class="fy-content" id="fyContent" hidden>
+        <article class="fy-card">
+          <div class="fy-poster" id="fyPoster"><div id="fyThumbnail"></div><button id="fyPlay" class="fy-play" type="button" aria-label="Play this video">▶</button></div>
+          <div class="fy-card-body"><span class="fy-reason" id="fyReason"></span><h2 id="fyItemTitle"></h2><p id="fyMeta"></p>
+            <div class="fy-actions"><button class="fy-favorite" id="fyFavorite" type="button" aria-pressed="false">☆ Favorite</button><button class="fy-next" id="fyNext" type="button">Next suggestion →</button></div>
+          </div>
+        </article>
+        <div class="fy-footer"><button id="fyPrev" class="fy-back" type="button">← Previous</button><span id="fyProgress" role="status"></span><button id="fyRemix" class="fy-back" type="button">New mix ↻</button></div>
+        <p class="fy-hint">Swipe up on the picture for the next suggestion, or tap Play to watch and swipe through the mix.</p>
+      </div>
+      <div class="fy-empty" id="fyEmpty" hidden></div>
+    </section>
 
     <div class="toolbar">
       <div class="chips" id="platformChips">
@@ -611,6 +638,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-single-sound-control"></script>
+<script src="app.js?v=38-for-you"></script>
 </body>
 </html>
