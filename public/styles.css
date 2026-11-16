@@ -1315,3 +1315,15 @@ body:not(.tv-mode) .player-shell .fs-bar .fs-count:not([hidden]) {
   position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
   white-space: nowrap; padding: 7px 10px; border-radius: 12px; background: rgba(18,20,24,.94);
 }
+
+/* Phones/tablets with swipe enabled do not need navigation arrows. Restore
+   them when swipe is off and leave TV and mouse/keyboard layouts unchanged. */
+@media (pointer: coarse) {
+  body:not(.tv-mode) .player-shell:not(.swipe-nav-off) .fs-bar #fsPrevBtn,
+  body:not(.tv-mode) .player-shell:not(.swipe-nav-off) .fs-bar #fsNextBtn { display: none; }
+}
+/* The text node and the icon must not create separate grid rows. */
+body:not(.tv-mode) .player-shell .fs-bar #fsSoundBtn { position: relative; }
+body:not(.tv-mode) .player-shell .fs-bar #fsSoundBtn::after {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+}

@@ -947,6 +947,8 @@
   }
   function toggleFsMore() { if (state.moreOpen) closeFsMore(); else openFsMore(); }
   function syncFsMore() {
+    const shell = $("#playerShell");
+    if (shell) shell.classList.toggle("swipe-nav-off", prefs.swipeNav === "off");
     const item = currentList()[state.playerIndex];
     if (!item) return;
     const sources = activeSources(item);
@@ -2290,8 +2292,8 @@
   }
   function focusBigDefault() {
     if ($("#playerModal").hidden || state.playerView !== "big") return;
-    const target = $("#fsNextBtn") || $("#fsMoreBtn");
-    if (isVisible(target)) target.focus();
+    const target = [$("#fsNextBtn"), $("#fsMoreBtn")].find(isVisible);
+    if (target) target.focus();
   }
   function updateFsBtn() {
     const b = $("#fullscreenBtn");
