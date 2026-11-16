@@ -1336,3 +1336,8 @@ body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-bar,
 body:not(.tv-mode) .player-shell.pseudo-fs.fs-idle:not(.counting) .fs-exit {
   opacity: 0; visibility: hidden; pointer-events: none;
 }
+
+/* The bar already has sound; do not duplicate it over the picture on touch
+   and desktop. Keep the established TV layout and all provider controls. */
+body:not(.tv-mode) .player-shell:fullscreen .sound-helper,
+body:not(.tv-mode) .player-shell.pseudo-fs .sound-helper { display: none !important; }
