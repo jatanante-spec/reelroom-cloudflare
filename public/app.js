@@ -953,7 +953,7 @@
     const hasBackup = sources.length > 1;
     const useBackup = hasBackup && state.useBackup !== false;
     const active = useBackup ? sources[1] : sources[0];
-    const fav = $("#fsFavBtn"); if (fav) { fav.textContent = item.favorite ? "★" : "☆"; fav.title = item.favorite ? "Favorited" : "Favorite"; }
+    const fav = $("#fsFavBtn"); if (fav) { fav.textContent = item.favorite ? "★" : "☆"; fav.title = item.favorite ? "Remove from favorites" : "Add to favorites"; fav.setAttribute("aria-label", fav.title); fav.setAttribute("aria-pressed", String(!!item.favorite)); }
     const mf = $("#fsMoreFavBtn"); if (mf) mf.textContent = item.favorite ? "★ Favorited" : "☆ Favorite";
     const mw = $("#fsMoreWatchedBtn"); if (mw) mw.textContent = item.watched ? "✓ Watched" : "Mark watched";
     const mo = $("#fsMoreOriginalBtn"); if (mo) mo.href = active.url || safeUrl(item.canonical_url || item.url);
@@ -1448,7 +1448,7 @@
     const open = !!modal && !modal.hidden;
     const bar = $("#fsBar");
     const panel = $("#playerPostText");
-    const barH = open && bar && !document.body.classList.contains("tv-mode") ? Math.round(bar.getBoundingClientRect().height) : 0;
+    const barH = open && bar && !document.body.classList.contains("tv-mode") ? Math.round(bar.getBoundingClientRect().height) + 16 : 0;
     const panelH = open && panel && !panel.hidden ? Math.round(panel.getBoundingClientRect().height) : 0;
     const org = $("#playerOrganize");
     const orgH = open && org ? Math.round(org.getBoundingClientRect().height) : 0;
@@ -3684,6 +3684,7 @@
     on("#fsShuffleBtn", togglePlayerShuffle);
     on("#fsFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
     on("#fsMoreCloseBtn", closeFsMore);
+    on("#fsMoreOrganizeBtn", () => { const it = currentList()[state.playerIndex]; if (it) { closeFsMore(); openOrg([it.id]); } });
     on("#fsMoreFavBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleFav(it); });
     on("#fsMoreWatchedBtn", () => { const it = currentList()[state.playerIndex]; if (it) toggleWatched(it); });
     on("#fsMoreCopyBtn", copyCurrentLink);
