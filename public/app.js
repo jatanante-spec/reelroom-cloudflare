@@ -1719,21 +1719,43 @@
     }
   }
 
+  // Updating a flag must not rebuild the player or restart its video.
+  // Freeze the queue first: removing a favorite (or marking watched) can make
+  // the current item disappear from the active filter while it is playing.
+  function preservePlayerQueue() {
+    if (!$("#playerModal").hidden && !state.playerQueue) {
+      state.playerQueue = currentList().map((i) => i.id);
+    }
+  }
+  function syncPlayerFlags(id) {
+    if ($("#playerModal").hidden || state.playerIndex < 0) return;
+    const current = currentList()[state.playerIndex];
+    if (!current || current.id !== id) return; // the user may have swiped meanwhile
+    $("#favBtn").textContent = current.favorite ? "★ Favorited" : "☆ Favorite";
+    $("#watchedBtn").textContent = current.watched ? "✓ Watched" : "Mark watched";
+    syncFsMore();
+  }
   async function toggleFav(item) {
+    preservePlayerQueue();
     try {
       const updated = await api(`/api/items/${item.id}`, { method: "PATCH", body: { favorite: !item.favorite } });
-      Object.assign(item, updated);
+      const stored = state.items.find((i) => i.id === item.id);
+      if (stored) stored.favorite = updated.favorite;
+      item.favorite = updated.favorite;
       render();
-      if (!$("#playerModal").hidden && state.playerIndex >= 0) renderPlayer(currentList()[state.playerIndex]);
+      syncPlayerFlags(item.id);
     } catch (e) { toast(e.message); }
   }
 
   async function toggleWatched(item) {
+    preservePlayerQueue();
     try {
       const updated = await api(`/api/items/${item.id}`, { method: "PATCH", body: { watched: !item.watched } });
-      Object.assign(item, updated);
+      const stored = state.items.find((i) => i.id === item.id);
+      if (stored) stored.watched = updated.watched;
+      item.watched = updated.watched;
       render();
-      if (!$("#playerModal").hidden && state.playerIndex >= 0) renderPlayer(currentList()[state.playerIndex]);
+      syncPlayerFlags(item.id);
     } catch (e) { toast(e.message); }
   }
 
