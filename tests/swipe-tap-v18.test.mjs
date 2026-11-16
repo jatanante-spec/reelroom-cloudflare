@@ -34,7 +34,7 @@ test("the layer still only appears in Anywhere mode and hides for panels", () =>
 test("swipe recognition still uses the shell listeners and vertical threshold", () => {
   assert.match(appjs, /shellEl\.addEventListener\("touchstart"/);
   assert.match(appjs, /shellEl\.addEventListener\("touchend"/);
-  assert.match(appjs, /Math\.abs\(dy\) > 70 && Math\.abs\(dy\) > Math\.abs\(dx\) \* 1\.4/);
+  assert.match(appjs, /Math\.abs\(dy\) > 45 && Math\.abs\(dy\) > Math\.abs\(dx\) \* 1\.4/);
   assert.match(appjs, /swipeStep\(dy < 0 \? 1 : -1\)/);
 });
 

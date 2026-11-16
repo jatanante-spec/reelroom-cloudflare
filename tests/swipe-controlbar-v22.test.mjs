@@ -28,7 +28,7 @@ test("zones re-layout when the video box changes size or metadata arrives", () =
 });
 
 test("swipe navigation and centre tap-through contracts are unchanged", () => {
-  assert.match(appjs, /Math\.abs\(dy\) > 70 && Math\.abs\(dy\) > Math\.abs\(dx\) \* 1\.4/);
+  assert.match(appjs, /Math\.abs\(dy\) > 45 && Math\.abs\(dy\) > Math\.abs\(dx\) \* 1\.4/);
   assert.match(appjs, /swipeStep\(dy < 0 \? 1 : -1\)/);
   assert.match(appjs, /prefs\.swipeNav === "anywhere" && !\$\("#playerModal"\)\.hidden/);
 });

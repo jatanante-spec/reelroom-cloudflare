@@ -3759,6 +3759,7 @@
         if ($("#playerModal").hidden || state.playerView !== "big" || prefs.swipeNav === "off") return;
         if (state.moreOpen || state.backGuardOpen || !$("#orgModal").hidden) { state.swipeTouch = null; return; }
         if (e.target && e.target.closest && e.target.closest(".player-organize")) { state.swipeTouch = null; return; }
+        if (e.touches.length !== 1) { state.swipeTouch = null; return; }
         const t = e.touches[0]; if (!t) return;
         const rect = shellEl.getBoundingClientRect();
         const x = t.clientX - rect.left, y = t.clientY - rect.top;
@@ -3776,9 +3777,12 @@
         if (!s) return;
         const t = e.changedTouches[0]; if (!t) return;
         const dy = t.clientY - s.y, dx = t.clientX - s.x;
-        if (Date.now() - s.t > 900) return;
-        if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.lastSwipeAt = Date.now(); swipeStep(dy < 0 ? 1 : -1); }
+        // Accept a natural shorter/slower swipe, but keep taps, diagonal
+        // motions and caption scrolling from becoming navigation.
+        if (Date.now() - s.t > 1500) return;
+        if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx) * 1.4) { state.lastSwipeAt = Date.now(); swipeStep(dy < 0 ? 1 : -1); }
       }, { passive: true });
+      shellEl.addEventListener("touchcancel", () => { state.swipeTouch = null; }, { passive: true });
     }
     window.addEventListener("blur", () => {
       if (inFullscreen() && !$("#playerShell")?.classList.contains("fs-idle")) showFsControls();
