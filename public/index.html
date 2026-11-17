@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-for-you">
+<link rel="stylesheet" href="styles.css?v=38-watch-history">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -67,6 +67,7 @@
       <button class="side-link active" data-view="all"><span class="side-ico">🏠</span> All links</button>
       <button class="side-link" data-view="favorites"><span class="side-ico">★</span> Favorites</button>
       <button class="side-link" data-view="unwatched"><span class="side-ico">◷</span> Unwatched</button>
+      <button class="side-link" data-view="history"><span class="side-ico">↺</span> Watch history</button>
     </nav>
     <div class="side-section">
       <div class="side-heading">Platforms</div>
@@ -150,13 +151,15 @@
     <section class="continue" id="continueSection" hidden>
       <div class="continue-head">
         <h2>Continue watching</h2>
-        <button class="btn btn-small" id="clearContinueBtn">Clear</button>
+        <div class="continue-actions"><button class="btn btn-small" id="watchHistoryBtn" type="button">Watch history</button><button class="btn btn-small" id="clearContinueBtn">Clear</button></div>
       </div>
       <div class="rail" id="continueRail"></div>
     </section>
 
+    <section class="history-intro" id="historyIntro" hidden><h2>Watch history</h2><p>Videos you’ve opened, including finished ones. Most recently opened first.</p></section>
     <div class="active-filters" id="activeFilters"></div>
     <div class="groups" id="grid"></div>
+    <div class="empty" id="historyEmpty" hidden><div class="empty-ico">◷</div><h2>No videos found</h2><p>Your recently opened videos will appear here. Try clearing search or filters if you expected to see one.</p></div>
     <div class="empty" id="emptyState" hidden>
       <div class="empty-ico">📼</div>
       <h2>No links here yet</h2>
@@ -638,6 +641,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-for-you"></script>
+<script src="app.js?v=38-watch-history"></script>
 </body>
 </html>

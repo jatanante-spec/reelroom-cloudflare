@@ -1380,3 +1380,15 @@ body.for-you-open .main > .demo-banner { display: none !important; }
 .fy-hint { text-align: center; margin: 10px 0 0; }
 .fy-empty { padding: 28px 20px; border-radius: 15px; background: #1b1b23; color: #ccc7d1; line-height: 1.6; }
 @media (max-width: 600px) { .for-you-invite { padding: 12px 14px; margin-bottom: 12px; } .for-you-invite h2 { font-size: 18px; } .fy-start { padding: 10px 12px; } .fy-eyebrow { font-size: 9px; } }
+
+/* History is based on the most recent time each video was opened. */
+.continue-actions { display: flex; align-items: center; gap: 6px; }
+.history-intro { margin: 12px 0 14px; }
+.history-intro h2 { font-size: 20px; margin: 0 0 5px; }
+.history-intro p { color: var(--text-dim); font-size: 13px; line-height: 1.45; margin: 0; }
+.history-date { color: #b8aab4; font-size: 11px; margin: 5px 0 0; }
+body.watch-history-view .main > .for-you-invite,
+body.watch-history-view .main > .continue,
+body.watch-history-view .sort-wrap { display: none !important; }
+body.for-you-open .main > .history-intro,
+body.for-you-open .main > #historyEmpty { display: none !important; }

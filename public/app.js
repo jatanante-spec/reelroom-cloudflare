@@ -217,6 +217,7 @@
     let list = state.items.slice();
     if (state.view === "favorites") list = list.filter((i) => i.favorite);
     if (state.view === "unwatched") list = list.filter((i) => !i.watched && !isLinkItem(i));
+    if (state.view === "history") list = list.filter((i) => !isLinkItem(i) && !isPostItem(i) && Number.isFinite(Date.parse(i.last_opened_at || "")));
     if (state.platform) list = list.filter((i) => i.platform === state.platform);
     if (state.collection) list = list.filter((i) => i.collection === state.collection);
     if (state.tag) list = list.filter((i) => (i.tags || []).some((t) => t.toLowerCase() === state.tag.toLowerCase()));
@@ -234,7 +235,8 @@
       title: (a, b) => String(a.title || "").localeCompare(String(b.title || "")),
       platform: (a, b) => String(a.platform || "").localeCompare(String(b.platform || "")) || stamp(b).localeCompare(stamp(a)),
     };
-    list.sort(sorters[state.sort] || sorters.newest);
+    if (state.view === "history") list.sort((a,b) => Date.parse(b.last_opened_at) - Date.parse(a.last_opened_at));
+    else list.sort(sorters[state.sort] || sorters.newest);
     return list;
   }
 
@@ -252,7 +254,10 @@
     updateTopContext(list.length);
     updateScrollUI();
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
-    $("#emptyState").hidden = list.length > 0;
+    $("#emptyState").hidden = list.length > 0 || state.view === "history";
+    $("#historyEmpty").hidden = list.length > 0 || state.view !== "history";
+    $("#historyIntro").hidden = state.view !== "history";
+    document.body.classList.toggle("watch-history-view", state.view === "history");
     $("#grid").hidden = list.length === 0;
     document.body.classList.toggle("for-you-open", state.forYouOpen);
     $("#fyPanel").hidden = !state.forYouOpen;
@@ -345,7 +350,7 @@
 
   function renderActiveFilters() {
     const parts = [];
-    if (state.view !== "all") parts.push({ label: state.view === "favorites" ? "Favorites" : "Unwatched", clear: () => { state.view = "all"; } });
+    if (state.view !== "all") parts.push({ label: state.view === "favorites" ? "Favorites" : state.view === "history" ? "Watch history" : "Unwatched", clear: () => { state.view = "all"; } });
     if (state.collection) parts.push({ label: `Collection: ${state.collection}`, clear: () => { state.collection = ""; } });
     if (state.tag) parts.push({ label: `#${state.tag}`, clear: () => { state.tag = ""; } });
     if (state.search) parts.push({ label: `Search: “${state.search}”`, clear: () => { state.search = ""; $("#searchInput").value = ""; } });
@@ -408,6 +413,10 @@
     </div>`;
   }
 
+  function historyDate(item) {
+    const date = new Date(item.last_opened_at);
+    return Number.isFinite(date.getTime()) ? date.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  }
   function renderGrid(list) {
     const grid = $("#grid");
     const cardHtml = (item) => `
@@ -418,6 +427,7 @@
         <div class="card-body">
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
           <div class="card-author">${esc(item.author || item.web_host || PLATFORM_LABEL[item.platform] || "")} ${isLinkItem(item) ? (item.visited ? '<span class="watched-mark">✓ visited</span>' : "") : (isPostItem(item) ? "" : (item.watched ? '<span class="watched-mark">✓ watched</span>' : ""))}</div>
+          ${state.view === "history" ? `<div class="history-date">Opened ${esc(historyDate(item))}</div>` : ""}
           ${item.post_text ? `<p class="card-snippet">${esc(item.post_text.slice(0, 150))}</p>` : ""}
           <div class="card-meta">
             ${(item.tags || []).slice(0, 3).map((t) => `<span class="mini-tag">#${esc(t)}</span>`).join("")}
@@ -652,6 +662,7 @@
     state.forYouPlaying = !!forYouIds;
     if (forYouIds) state.playerQueue = list.map(item => item.id);
     else if (prefs.shuffle) setPlayerShuffleOrder(list, id);
+    else if (state.view === "history") state.playerQueue = list.map(item => item.id);
     document.body.style.overflow = "hidden";
     hideUndo();
     if (!state.playerHistoryActive) armPlayerHistory();
@@ -1763,7 +1774,7 @@
     state.fbNativeVideo = null;
     state.fbStreamSeq++;
     clearTimeout(state.reportWatchdog);
-    if (item) saveProgress(item, true, { keepalive: true }).then(() => renderContinue());
+    if (item) saveProgress(item, true, { keepalive: true }).then(() => { if (state.view === "history" && $("#playerModal").hidden) render(); else renderContinue(); });
     if (opts.undo && item) showUndo(item); else hideUndo();
     closeFsMore();
     hideBackGuard();
@@ -3089,6 +3100,7 @@
   function groupList(list) {
     const map = new Map();
     const keyOf = (it) => {
+      if (state.view === "history") { const d = new Date(it.last_opened_at); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
       if (state.sort === "title") { const c = (displayTitle(it).trim()[0] || "#").toUpperCase(); return /[A-Z]/.test(c) ? c : "#"; }
       if (state.sort === "platform") return it.platform || "other";
       const d = new Date(it.created_at || 0);
@@ -3096,15 +3108,15 @@
       return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
     };
     const labelOf = (k) => {
-      if (state.sort === "title") return k;
-      if (state.sort === "platform") return PLATFORM_LABEL[k] || k;
+      if (state.view !== "history" && state.sort === "title") return k;
+      if (state.view !== "history" && state.sort === "platform") return PLATFORM_LABEL[k] || k;
       if (k === "unknown") return "Unknown date";
       const [y, m] = k.split("-");
       return new Date(Number(y), Number(m) - 1, 1).toLocaleString("en", { month: "short", year: "numeric" });
     };
     const shortOf = (k) => {
-      if (state.sort === "title") return k;
-      if (state.sort === "platform") return (PLATFORM_LABEL[k] || k).slice(0, 2);
+      if (state.view !== "history" && state.sort === "title") return k;
+      if (state.view !== "history" && state.sort === "platform") return (PLATFORM_LABEL[k] || k).slice(0, 2);
       if (k === "unknown") return "?";
       return labelOf(k).split(" ")[0];
     };
@@ -3239,7 +3251,7 @@
     const label = state.platform ? PLATFORM_LABEL[state.platform]
       : state.collection ? state.collection
       : state.view === "favorites" ? "Favorites"
-      : state.view === "unwatched" ? "Unwatched" : "All platforms";
+      : state.view === "unwatched" ? "Unwatched" : state.view === "history" ? "Watch history" : "All platforms";
     const n = typeof count === "number" ? count : filtered().length;
     el.innerHTML = `<b>${esc(label)}</b> · ${n} link${n === 1 ? "" : "s"}${state.search ? ` · “${esc(state.search)}”` : ""}`;
   }
@@ -3466,6 +3478,12 @@
       state.view = "all"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar();
     });
 
+    function openWatchHistory() {
+      if (state.forYouOpen) closeForYou();
+      state.view = "history"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = "";
+      $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop();
+    }
+    $("#watchHistoryBtn").addEventListener("click", openWatchHistory);
     $("#fyStart").addEventListener("click", openForYou);
     $("#fyBack").addEventListener("click", () => closeForYou());
     $$("[data-fy-mode]").forEach(b => b.addEventListener("click", () => resetForYou(b.dataset.fyMode)));
@@ -3484,7 +3502,7 @@
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
     $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; syncFlip(); render(); });
 
-    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
+    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.view === "history") { openWatchHistory(); return; } if (state.forYouOpen) closeForYou(); state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
     $$(".platform-link").forEach((b) => b.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
     $$("#platformChips .chip").forEach((c) => c.addEventListener("click", () => { state.platform = c.dataset.platform; render(); }));
 
