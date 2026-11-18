@@ -1403,3 +1403,20 @@ body.for-you-open .main > #duplicatesEmpty { display: none !important; }
 .duplicate-remove { border: 1px solid #715264; border-radius: 7px; background: transparent; color: #f3d4d7; padding: 7px 9px; font-size: 12px; margin: 3px 0 7px; }
 .duplicate-remove:focus-visible { outline: 3px solid #ffc075; outline-offset: 2px; }
 body.selecting .duplicate-remove { display: none; }
+
+.collection-heading { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.collection-hide-toggle, .collection-show-all { border:1px solid #524052; border-radius:7px; background:transparent; color:#efd4e4; padding:6px 8px; font-size:11px; cursor:pointer; }
+.collection-hide-panel { margin:5px 0 10px; padding:10px; border:1px solid #493947; border-radius:10px; background:#211921; }
+.collection-hide-panel p { color:#c9bbc5; font-size:12px; line-height:1.4; margin:0 0 8px; }
+.collection-hide-choice { display:flex; align-items:center; gap:8px; min-height:36px; font-size:13px; overflow-wrap:anywhere; }
+.collection-hide-choice input { width:18px; height:18px; accent-color:#ef9cc5; flex-shrink:0; }
+.collection-hide-panel .collection-hide-note { margin:8px 0 0; font-size:11px; }
+.collection-hidden-label { color:#ba98ad; font-size:10px; margin-left:4px; }
+.hidden-collections-notice { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 12px; margin:10px 0; border:1px solid #594253; border-radius:9px; color:#f0d9e8; font-size:12px; }
+.hidden-collections-notice span { flex:1; min-width:130px; }
+.hidden-collections-notice button { border:0; background:transparent; color:#ffc3df; padding:5px; text-decoration:underline; cursor:pointer; }
+body.for-you-open .main > .hidden-collections-notice, body.for-you-open .main > #hiddenCollectionsEmpty { display:none !important; }
+body.for-you-open .main > #collectionHidePanel { display:none !important; }
+#collectionHideChoices { max-height: 280px; overflow-y: auto; }
+body.tv-mode .collection-hide-choice { min-height: 48px; font-size: 17px; }
+body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }

@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-duplicates">
+<link rel="stylesheet" href="styles.css?v=38-hidden-collections">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -131,6 +131,7 @@
         <button class="chip" data-platform="facebook">Facebook</button>
         <button class="chip" data-platform="web">Web</button>
       </div>
+      <button class="chip collection-hide-toggle" id="collectionHideToggle" type="button" aria-expanded="false" aria-controls="collectionHidePanel">Hide collections</button>
       <!-- v34: one slim sort chip replaces the old dropdown row -->
       <div class="menu-wrap sort-wrap">
         <button class="chip" id="sortChip" aria-haspopup="true" aria-expanded="false">Newest ▾</button>
@@ -149,6 +150,7 @@
       </select>
     </div>
 
+    <div id="collectionHidePanel" class="collection-hide-panel" hidden><p>Choose collections to hide from your main list and video mix. You can still open a collection directly.</p><div id="collectionHideChoices"></div><button type="button" class="collection-show-all" id="collectionShowAll">Show all collections</button><p class="collection-hide-note">This setting is saved on this device.</p></div>
     <section class="continue" id="continueSection" hidden>
       <div class="continue-head">
         <h2>Continue watching</h2>
@@ -157,10 +159,12 @@
       <div class="rail" id="continueRail"></div>
     </section>
 
+    <div class="hidden-collections-notice" id="hiddenCollectionsNotice" hidden><span id="hiddenCollectionsSummary"></span><button type="button" id="manageHiddenCollections">Manage</button><button type="button" id="showAllHiddenCollections">Show all</button></div>
     <section class="history-intro" id="historyIntro" hidden><h2>Watch history</h2><p>Videos you’ve opened, including finished ones. Most recently opened first.</p></section>
     <section class="history-intro" id="duplicatesIntro" hidden><h2>Possible duplicates</h2><p>Videos are grouped by matching titles or video links. They may not be the same: play and compare them before removing anything. Nothing is removed automatically.</p></section>
     <div class="active-filters" id="activeFilters"></div>
     <div class="groups" id="grid"></div>
+    <div class="empty" id="hiddenCollectionsEmpty" hidden><div class="empty-ico">📁</div><h2>No visible items here</h2><p>Some collections are hidden. Change your filters or show all collections to see more.</p><button class="btn btn-small" type="button" id="emptyShowAllCollections">Show all collections</button></div>
     <div class="empty" id="duplicatesEmpty" hidden><div class="empty-ico">✓</div><h2>No possible duplicates found</h2><p>Some duplicates can have different titles or links, so this check may not find them all. Clear filters to check your whole library.</p></div>
     <div class="empty" id="historyEmpty" hidden><div class="empty-ico">◷</div><h2>No videos found</h2><p>Your recently opened videos will appear here. Try clearing search or filters if you expected to see one.</p></div>
     <div class="empty" id="emptyState" hidden>
@@ -644,6 +648,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-duplicates"></script>
+<script src="app.js?v=38-hidden-collections"></script>
 </body>
 </html>

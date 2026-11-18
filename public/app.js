@@ -233,8 +233,14 @@
     return [...groups.values()].filter(g => g.length > 1);
   }
 
+  function hiddenCollections() { return Array.isArray(prefs.hiddenCollections) ? prefs.hiddenCollections : []; }
+  function collectionIsHidden(item) { return !!item.collection && hiddenCollections().includes(item.collection); }
+  function hideFilterActive() { return !state.collection && state.view !== "history" && state.view !== "duplicates"; }
+  function showAllCollections() { prefs.hiddenCollections = []; savePrefs(); render(); }
+
   function filtered() {
     let list = state.items.slice();
+    if (hideFilterActive()) list = list.filter(i => !collectionIsHidden(i));
     if (state.view === "favorites") list = list.filter((i) => i.favorite);
     if (state.view === "unwatched") list = list.filter((i) => !i.watched && !isLinkItem(i));
     if (state.view === "duplicates") { const ids = new Set(duplicateGroups(state.items).flat().map(i => i.id)); list = list.filter(i => ids.has(i.id)); }
@@ -275,7 +281,11 @@
     updateTopContext(list.length);
     updateScrollUI();
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
-    $("#emptyState").hidden = list.length > 0 || state.view === "history" || state.view === "duplicates";
+    const hiddenEmpty = !list.length && hideFilterActive() && hiddenCollections().length > 0;
+    $("#hiddenCollectionsEmpty").hidden = !hiddenEmpty;
+    $("#emptyState").hidden = list.length > 0 || hiddenEmpty || state.view === "history" || state.view === "duplicates";
+    $("#hiddenCollectionsNotice").hidden = !hiddenCollections().length;
+    $("#hiddenCollectionsSummary").textContent = state.collection && hiddenCollections().includes(state.collection) ? `Viewing hidden collection “${state.collection}”` : `${hiddenCollections().length} collection${hiddenCollections().length === 1 ? "" : "s"} hidden from main list`;
     $("#duplicatesEmpty").hidden = list.length > 0 || state.view !== "duplicates";
     $("#duplicatesIntro").hidden = state.view !== "duplicates";
     document.body.classList.toggle("duplicates-view", state.view === "duplicates");
@@ -300,8 +310,17 @@
   function renderCollections() {
     const cols = [...new Set(state.items.map((i) => i.collection).filter(Boolean))].sort();
     const wrap = $("#collectionList");
+    const choices = $("#collectionHideChoices");
+    choices.innerHTML = cols.length ? cols.map(c => `<label class="collection-hide-choice"><input type="checkbox" data-hide-collection="${esc(c)}" ${hiddenCollections().includes(c) ? "checked" : ""}><span>Hide ${esc(c)}</span></label>`).join("") : `<p>No collections yet.</p>`;
+    choices.querySelectorAll("input").forEach(input => input.addEventListener("change", () => {
+      const name = input.dataset.hideCollection;
+      prefs.hiddenCollections = input.checked ? [...new Set([...hiddenCollections(), name])] : hiddenCollections().filter(c => c !== name);
+      savePrefs(); render();
+      const focus = [...choices.querySelectorAll("input")].find(el => el.dataset.hideCollection === name); if (focus) focus.focus({preventScroll:true});
+    }));
+    $("#collectionShowAll").disabled = !hiddenCollections().length;
     wrap.innerHTML = cols.length
-      ? cols.map((c) => `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}</button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`).join("")
+      ? cols.map((c) => `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}${hiddenCollections().includes(c) ? ' <span class="collection-hidden-label">hidden</span>' : ""}</button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`).join("")
       : `<div class="side-footer" style="margin:0;padding:4px 12px;">No collections yet</div>`;
     wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
       if (state.forYouOpen) closeForYou();
@@ -344,6 +363,7 @@
     }
     btn.disabled = false; btn.textContent = "Rename on all videos";
     if (state.collection === old && !failed.length) state.collection = next;
+    if (ok && hiddenCollections().includes(old)) { prefs.hiddenCollections = [...new Set([...hiddenCollections(), next])]; if (!failed.length) prefs.hiddenCollections = prefs.hiddenCollections.filter(c => c !== old); savePrefs(); }
     if (!failed.length) {
       $("#renameModal").hidden = true;
       render();
@@ -536,7 +556,7 @@
 
   // For You uses only the existing library on this device. No external AI or
   // media downloads: mix explicit favorites, never-opened and older saves.
-  function forYouVideos() { return state.items.filter((i) => !isLinkItem(i) && !isPostItem(i)); }
+  function forYouVideos() { return state.items.filter((i) => !collectionIsHidden(i) && !isLinkItem(i) && !isPostItem(i)); }
   function neverOpened(i) { return !i.watched && !i.last_opened_at && !(Number(i.watch_seconds) > 0) && !(Number(i.progress) > 0); }
   function oldSave(i) { const t = Date.parse(i.created_at || ""); return Number.isFinite(t) && Date.now() - t >= 30 * 86400000; }
   function randomOrder(items) {
@@ -593,7 +613,7 @@
     const item = entry && state.items.find(i => i.id === entry.id);
     $("#fyContent").hidden = !item; $("#fyEmpty").hidden = !!item;
     if (!item) {
-      $("#fyEmpty").textContent = state.forYouMode === "favorites" ? "No favorite videos yet. Star a video to see it here." : state.forYouMode === "unwatched" ? "No never-opened videos right now." : state.forYouMode === "forgotten" ? "No videos saved more than 30 days ago yet." : "Save some videos and they’ll appear here.";
+      $("#fyEmpty").textContent = state.forYouMode === "favorites" ? "No favorite videos yet. Star a video to see it here." : state.forYouMode === "unwatched" ? "No never-opened videos right now." : state.forYouMode === "forgotten" ? "No videos saved more than 30 days ago yet." : hiddenCollections().length ? "No videos available in this mix. Check your hidden collections or save more videos." : "Save some videos and they’ll appear here.";
       return;
     }
     $("#fyThumbnail").innerHTML = thumbHtml(item);
@@ -2942,7 +2962,7 @@
   function continueItems() {
     const cut = prefs.continueClearedAt ? Date.parse(prefs.continueClearedAt) : 0;
     return state.items
-      .filter((i) => i.last_opened_at && !i.watched && Date.parse(i.last_opened_at) > cut)
+      .filter((i) => !collectionIsHidden(i) && i.last_opened_at && !i.watched && Date.parse(i.last_opened_at) > cut)
       .sort((a, b) => String(b.last_opened_at).localeCompare(String(a.last_opened_at)))
       .slice(0, 12);
   }
@@ -3513,6 +3533,11 @@
       state.view = "history"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = "";
       $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop();
     }
+    $("#collectionHideToggle").addEventListener("click", () => { const panel = $("#collectionHidePanel"); panel.hidden = !panel.hidden; $("#collectionHideToggle").setAttribute("aria-expanded", String(!panel.hidden)); });
+    $("#collectionShowAll").addEventListener("click", showAllCollections);
+    $("#showAllHiddenCollections").addEventListener("click", showAllCollections);
+    $("#emptyShowAllCollections").addEventListener("click", showAllCollections);
+    $("#manageHiddenCollections").addEventListener("click", (e) => { $("#collectionHidePanel").hidden = false; $("#collectionHideToggle").setAttribute("aria-expanded", "true"); $("#collectionHideToggle").focus(); });
     $("#watchHistoryBtn").addEventListener("click", openWatchHistory);
     $("#fyStart").addEventListener("click", openForYou);
     $("#fyBack").addEventListener("click", () => closeForYou());
