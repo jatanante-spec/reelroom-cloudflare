@@ -213,10 +213,31 @@
     showLogin();
   }
 
+  // Conservative suggestions, never automatic deletion. Generic platform titles
+  // are common across unrelated videos and must not become duplicate matches.
+  function duplicateGroups(items) {
+    const videos = items.filter(i => !isLinkItem(i) && !isPostItem(i));
+    const parent = videos.map((_, i) => i);
+    const root = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    const seen = new Map();
+    const generic = /^(?:(?:facebook|youtube|instagram|tiktok|fb|reelroom)\s*)?(?:video|reel|reels|post|short|shorts|watch|clip|videos|untitled|link)(?:\s+(?:video|reel|post|short|shorts|clip))?$/i;
+    videos.forEach((item, index) => {
+      const keys = [];
+      const title = String(item.title || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+      if (title.length >= 8 && !generic.test(title)) keys.push("title:" + title);
+      if (item.external_id && item.platform) keys.push("id:" + item.platform + ":" + String(item.external_id));
+      try { const u = new URL(item.canonical_url || item.url); u.hash = ""; u.searchParams.delete("utm_source"); u.searchParams.delete("utm_medium"); u.searchParams.delete("utm_campaign"); keys.push("url:" + u.toString().replace(/\/$/, "")); } catch {}
+      keys.forEach(k => { if (seen.has(k)) parent[root(index)] = root(seen.get(k)); else seen.set(k, index); });
+    });
+    const groups = new Map(); videos.forEach((v,i) => { const k = root(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(v); });
+    return [...groups.values()].filter(g => g.length > 1);
+  }
+
   function filtered() {
     let list = state.items.slice();
     if (state.view === "favorites") list = list.filter((i) => i.favorite);
     if (state.view === "unwatched") list = list.filter((i) => !i.watched && !isLinkItem(i));
+    if (state.view === "duplicates") { const ids = new Set(duplicateGroups(state.items).flat().map(i => i.id)); list = list.filter(i => ids.has(i.id)); }
     if (state.view === "history") list = list.filter((i) => !isLinkItem(i) && !isPostItem(i) && Number.isFinite(Date.parse(i.last_opened_at || "")));
     if (state.platform) list = list.filter((i) => i.platform === state.platform);
     if (state.collection) list = list.filter((i) => i.collection === state.collection);
@@ -254,7 +275,10 @@
     updateTopContext(list.length);
     updateScrollUI();
     $("#demoBanner").hidden = !state.items.some((i) => i.demo);
-    $("#emptyState").hidden = list.length > 0 || state.view === "history";
+    $("#emptyState").hidden = list.length > 0 || state.view === "history" || state.view === "duplicates";
+    $("#duplicatesEmpty").hidden = list.length > 0 || state.view !== "duplicates";
+    $("#duplicatesIntro").hidden = state.view !== "duplicates";
+    document.body.classList.toggle("duplicates-view", state.view === "duplicates");
     $("#historyEmpty").hidden = list.length > 0 || state.view !== "history";
     $("#historyIntro").hidden = state.view !== "history";
     document.body.classList.toggle("watch-history-view", state.view === "history");
@@ -350,7 +374,7 @@
 
   function renderActiveFilters() {
     const parts = [];
-    if (state.view !== "all") parts.push({ label: state.view === "favorites" ? "Favorites" : state.view === "history" ? "Watch history" : "Unwatched", clear: () => { state.view = "all"; } });
+    if (state.view !== "all") parts.push({ label: state.view === "favorites" ? "Favorites" : state.view === "history" ? "Watch history" : state.view === "duplicates" ? "Possible duplicates" : "Unwatched", clear: () => { state.view = "all"; } });
     if (state.collection) parts.push({ label: `Collection: ${state.collection}`, clear: () => { state.collection = ""; } });
     if (state.tag) parts.push({ label: `#${state.tag}`, clear: () => { state.tag = ""; } });
     if (state.search) parts.push({ label: `Search: “${state.search}”`, clear: () => { state.search = ""; $("#searchInput").value = ""; } });
@@ -428,6 +452,7 @@
           <h3 class="card-title">${esc(displayTitle(item))}</h3>
           <div class="card-author">${esc(item.author || item.web_host || PLATFORM_LABEL[item.platform] || "")} ${isLinkItem(item) ? (item.visited ? '<span class="watched-mark">✓ visited</span>' : "") : (isPostItem(item) ? "" : (item.watched ? '<span class="watched-mark">✓ watched</span>' : ""))}</div>
           ${state.view === "history" ? `<div class="history-date">Opened ${esc(historyDate(item))}</div>` : ""}
+          ${state.view === "duplicates" ? `<div class="duplicate-details">Saved ${esc(item.created_at ? new Date(item.created_at).toLocaleDateString() : "date unknown")}${item.favorite ? " · ★ Favorite" : ""}${item.watched ? " · Watched" : ""}</div><button class="duplicate-remove" type="button" data-act="delete" aria-label="Remove ${esc(displayTitle(item))} from library">Remove from library</button>` : ""}
           ${item.post_text ? `<p class="card-snippet">${esc(item.post_text.slice(0, 150))}</p>` : ""}
           <div class="card-meta">
             ${(item.tags || []).slice(0, 3).map((t) => `<span class="mini-tag">#${esc(t)}</span>`).join("")}
@@ -470,6 +495,7 @@
         openPlayer(id);
       });
       card.addEventListener("keydown", (e) => {
+        if (e.target.closest("button")) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           if (state.selecting) toggleSel(id);
@@ -3098,6 +3124,10 @@
 
   // ---- v28: scroll navigation ----
   function groupList(list) {
+    if (state.view === "duplicates") {
+      const visible = new Set(list.map(i => i.id));
+      return duplicateGroups(state.items).map((items, n) => ({key: "duplicate-" + n, label: "Possible match " + (n + 1), short: String(n + 1), items: items.filter(i => visible.has(i.id))})).filter(g => g.items.length);
+    }
     const map = new Map();
     const keyOf = (it) => {
       if (state.view === "history") { const d = new Date(it.last_opened_at); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
@@ -3251,7 +3281,7 @@
     const label = state.platform ? PLATFORM_LABEL[state.platform]
       : state.collection ? state.collection
       : state.view === "favorites" ? "Favorites"
-      : state.view === "unwatched" ? "Unwatched" : state.view === "history" ? "Watch history" : "All platforms";
+      : state.view === "unwatched" ? "Unwatched" : state.view === "history" ? "Watch history" : state.view === "duplicates" ? "Possible duplicates" : "All platforms";
     const n = typeof count === "number" ? count : filtered().length;
     el.innerHTML = `<b>${esc(label)}</b> · ${n} link${n === 1 ? "" : "s"}${state.search ? ` · “${esc(state.search)}”` : ""}`;
   }
@@ -3502,7 +3532,7 @@
     $("#searchInput").addEventListener("input", debounce((e) => { state.search = e.target.value.trim(); render(); }, 180));
     $("#sortSelect").addEventListener("change", (e) => { state.sort = e.target.value; syncFlip(); render(); });
 
-    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.view === "history") { openWatchHistory(); return; } if (state.forYouOpen) closeForYou(); state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
+    $$(".side-link[data-view]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.view === "history") { openWatchHistory(); return; } if (b.dataset.view === "duplicates") { if (state.forYouOpen) closeForYou(); state.view = "duplicates"; state.platform = ""; state.collection = ""; state.tag = ""; state.search = ""; $("#searchInput").value = ""; render(); closeSidebar(); scrollToTop(); return; } if (state.forYouOpen) closeForYou(); state.view = b.dataset.view; state.platform = ""; state.collection = ""; state.tag = ""; render(); closeSidebar(); }));
     $$(".platform-link").forEach((b) => b.addEventListener("click", () => { if (state.forYouOpen) closeForYou(); state.platform = state.platform === b.dataset.platform ? "" : b.dataset.platform; state.view = "all"; render(); closeSidebar(); }));
     $$("#platformChips .chip").forEach((c) => c.addEventListener("click", () => { state.platform = c.dataset.platform; render(); }));
 

@@ -1392,3 +1392,14 @@ body.watch-history-view .main > .continue,
 body.watch-history-view .sort-wrap { display: none !important; }
 body.for-you-open .main > .history-intro,
 body.for-you-open .main > #historyEmpty { display: none !important; }
+
+/* Review suggestions, never remove anything without confirmation. */
+body.duplicates-view .main > .for-you-invite,
+body.duplicates-view .main > .continue,
+body.duplicates-view .sort-wrap { display: none !important; }
+body.for-you-open .main > #duplicatesIntro,
+body.for-you-open .main > #duplicatesEmpty { display: none !important; }
+.duplicate-details { color: var(--text-dim); font-size: 12px; margin: 7px 0; }
+.duplicate-remove { border: 1px solid #715264; border-radius: 7px; background: transparent; color: #f3d4d7; padding: 7px 9px; font-size: 12px; margin: 3px 0 7px; }
+.duplicate-remove:focus-visible { outline: 3px solid #ffc075; outline-offset: 2px; }
+body.selecting .duplicate-remove { display: none; }
