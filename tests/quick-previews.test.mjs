@@ -1,0 +1,16 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {handler} from '../lib/api-core.mjs';import {fakeD1} from './helpers.mjs';import {makeRepo,memoryAdapter} from '../lib/store.mjs';import {needsRefresh,refreshPending} from '../lib/metadata.mjs';
+const req=(url,opts={})=>new Request('https://reelroom.pages.dev'+url,{method:opts.method||'GET',headers:{'content-type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined});
+test('quiet Facebook save responds before background preview is ready',async()=>{
+ const env={DB:fakeD1(),NO_SEED:'1'},tasks=[],old=globalThis.fetch;let release;const gate=new Promise(r=>release=r);globalThis.fetch=async()=>{await gate;return new Response('<meta property="og:title" content="A real title"><meta property="og:image" content="https://scontent.xx.fbcdn.net/a.jpg?oe=70000000">',{status:200})};
+ try{const r=await handler(req('/api/items',{method:'POST',body:{url:'https://www.facebook.com/reel/123456789/'}}),env,{waitUntil:p=>tasks.push(p)});assert.equal(r.status,201);let data=await r.json();assert.equal(data.item.metadata_status,'manual');assert.equal(tasks.length,1);release();await Promise.all(tasks);const all=await (await handler(req('/api/items'),env)).json();assert.equal(all[0].title,'A real title');assert.match(all[0].thumbnail_url,/fbcdn/);assert.equal(all[0].metadata_status,'ok');
+ }finally{release();globalThis.fetch=old}
+});
+test('background preview cannot overwrite edits and competing metadata',async()=>{
+ const repo=makeRepo(memoryAdapter(),{noSeed:true}),a={id:'1',title:'Facebook Reel',thumbnail_url:null,created_at:'2025-01-01',metadata_status:'manual'};await repo.insert(a);await repo.update('1',{title:'My title',thumbnail_url:'https://example.com/chosen',thumbnail_custom:true,collection:'Health'});await repo.applyBackgroundMetadataIfUnchanged(a,{title:'Fetched title',thumbnail_url:'https://fbcdn.net/a',metadata_fetched_at:'2026-01-01',metadata_status:'ok'});let [x]=await repo.list();assert.equal(x.title,'My title');assert.equal(x.thumbnail_url,'https://example.com/chosen');assert.equal(x.collection,'Health');assert.equal(x.metadata_status,'ok');assert.equal(await repo.applyBackgroundMetadataIfUnchanged(a,{title:'Late'}),false);
+});
+test('post without a public caption does not retry endlessly',()=>{
+ let p={platform:'facebook',media_type:'post',post_image_checked:true,post_text_fetched:false,post_text_checked:true,metadata_fetched_at:new Date().toISOString()};assert.equal(needsRefresh(p),false);assert.equal(needsRefresh({...p,post_text_checked:false}),true);
+});
+test('unfetched saves get priority over older scheduled refreshes',async()=>{
+ const repo=makeRepo(memoryAdapter(),{noSeed:true});const mk=(id,date,meta)=>({id,created_at:date,platform:'facebook',media_type:'reel',url:`https://www.facebook.com/reel/${id}`,canonical_url:`https://www.facebook.com/reel/${id}`,metadata_fetched_at:meta});await repo.insert(mk('1','2026-01-02','2020-01-01'));await repo.insert(mk('2','2026-01-01',null));const old=globalThis.fetch,calls=[];globalThis.fetch=async u=>{calls.push(String(u));return new Response('<meta property="og:title" content="title">')};try{await refreshPending(repo,1);assert.match(calls[0],/\/2$/)}finally{globalThis.fetch=old}
+});

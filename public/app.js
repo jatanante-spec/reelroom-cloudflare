@@ -171,7 +171,7 @@
     // only an old copy of the details is refreshed, weeks later.
     if (isPostItem(item)) {
       if (item.platform === "facebook" && !item.post_image_checked) return true;
-      if (!item.post_text_fetched) return true;
+      if (!item.post_text_fetched && !item.post_text_checked) return true;
       if (!item.metadata_fetched_at) return false;
       const at = Date.parse(item.metadata_fetched_at);
       if (!Number.isFinite(at)) return false;
@@ -183,19 +183,21 @@
     return Date.now() - at > META_REFRESH_MS;
   }
 
-  function schedulePoll() {
+  let metadataInFlight = false;
+  function schedulePoll(delay = 1200) {
     clearTimeout(state.pollTimer);
-    if (state.items.some(needsMeta)) {
-      state.pollTimer = setTimeout(refreshPending, 1200);
-    }
+    if (!metadataInFlight && state.items.some(needsMeta)) state.pollTimer = setTimeout(refreshPending, delay);
   }
   async function refreshPending() {
     clearTimeout(state.pollTimer);
+    if (metadataInFlight) return;
+    metadataInFlight = true;
+    let failed = false;
     try {
       await api("/api/refresh-pending", { method: "POST" });
-      // loadItems() re-runs schedulePoll(), which continues only while work remains.
       await loadItems();
-    } catch { /* auth modal will handle 401 */ }
+    } catch { failed = true; }
+    finally { metadataInFlight = false; schedulePoll(failed ? 30000 : 1200); }
   }
 
   // ---------- auth ----------
