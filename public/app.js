@@ -134,7 +134,33 @@
       });
       render();
       schedulePoll();
+      scheduleFacebookThumbnails();
     } catch (e) { toast(e.message); }
+  }
+  // Refresh only expiring Facebook CDN pictures, in small batches while open.
+  let thumbnailTimer = null;
+  function thumbnailDueAt(item) {
+    if (!item || item.platform !== "facebook" || ["post", "image", "page"].includes(item.media_type) || item.thumbnail_custom) return null;
+    try {
+      const u = new URL(item.thumbnail_url || ""), host = u.hostname.toLowerCase();
+      if (u.protocol !== "https:" || !(host === "fbcdn.net" || host.endsWith(".fbcdn.net"))) return null;
+      const oe = u.searchParams.get("oe");
+      if (!oe || !/^[0-9a-f]{6,12}$/i.test(oe)) return null;
+      const last = Date.parse(item.thumbnail_refresh_attempt_at || "") || 0;
+      return Math.max(parseInt(oe, 16) * 1000 - 24 * 3600000, last + 12 * 3600000);
+    } catch { return null; }
+  }
+  function scheduleFacebookThumbnails(delayOverride) {
+    clearTimeout(thumbnailTimer);
+    const times = state.items.map(thumbnailDueAt).filter(t => t !== null);
+    if (!times.length) return;
+    const wait = delayOverride ?? Math.max(8000, Math.min(30 * 60000, Math.min(...times) - Date.now()));
+    thumbnailTimer = setTimeout(async () => {
+      if (document.hidden || !state.authed) { scheduleFacebookThumbnails(60000); return; }
+      if (!state.items.some(i => { const due = thumbnailDueAt(i); return due !== null && due <= Date.now(); })) { scheduleFacebookThumbnails(); return; }
+      try { await api("/api/refresh-facebook-thumbnails", {method:"POST"}); await loadItems(); }
+      catch { scheduleFacebookThumbnails(5 * 60000); }
+    }, wait);
   }
   const META_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
   function needsMeta(item) {
