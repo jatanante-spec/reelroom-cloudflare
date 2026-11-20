@@ -4,5 +4,5 @@
 import { handler } from "../../lib/api-core.mjs";
 
 export async function onRequest(context) {
-  return handler(context.request, context.env);
+  return handler(context.request, context.env, context);
 }
