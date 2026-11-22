@@ -93,9 +93,9 @@
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && !path.startsWith("/api/login") && !path.startsWith("/api/me")) {
       showLogin();
-      throw new Error("Please sign in");
+      const error = new Error("Please sign in"); error.status = 401; throw error;
     }
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) { const error = new Error(data.error || `Request failed (${res.status})`); error.status = res.status; throw error; }
     return data;
   }
   let toastTimer;
@@ -157,6 +157,7 @@
     const wait = delayOverride ?? Math.max(8000, Math.min(30 * 60000, Math.min(...times) - Date.now()));
     thumbnailTimer = setTimeout(async () => {
       if (document.hidden || !state.authed) { scheduleFacebookThumbnails(60000); return; }
+      if (!$("#orgModal").hidden || !$("#editModal").hidden) { scheduleFacebookThumbnails(8000); return; }
       if (!state.items.some(i => { const due = thumbnailDueAt(i); return due !== null && due <= Date.now(); })) { scheduleFacebookThumbnails(); return; }
       try { await api("/api/refresh-facebook-thumbnails", {method:"POST"}); await loadItems(); }
       catch { scheduleFacebookThumbnails(5 * 60000); }
@@ -191,6 +192,7 @@
   async function refreshPending() {
     clearTimeout(state.pollTimer);
     if (metadataInFlight) return;
+    if (!$("#orgModal").hidden || !$("#editModal").hidden) { schedulePoll(8000); return; }
     metadataInFlight = true;
     let failed = false;
     try {
@@ -2321,11 +2323,22 @@
       sug.querySelectorAll("[data-sug]").forEach((b) => b.addEventListener("click", () => { state.orgTags.add(b.dataset.sug); renderOrg(); }));
     }
   }
+  async function saveOrganizeChange(id, body) {
+    // A repeated PATCH has the same result and is safe after a connection drop.
+    for (let attempt = 0; ; attempt++) {
+      try { return await api(`/api/items/${id}`, { method: "PATCH", body }); }
+      catch (err) {
+        const temporary = !err.status || err.status === 408 || err.status === 409 || err.status === 429 || err.status >= 500;
+        if (!temporary || attempt >= 2) throw err;
+        await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1200));
+      }
+    }
+  }
   async function saveOrg() {
     const ids = state.orgIds.slice();
     const snapshot = ids.map((id) => { const i = state.items.find((x) => x.id === id); return { id, collection: i?.collection || "", tags: [...(i?.tags || [])] }; });
     const btn = $("#orgSaveBtn"); btn.disabled = true; btn.textContent = "Saving…";
-    const saved = [], failed = [];
+    const saved = [], failed = []; let lastFailure = null;
     for (const id of ids) {
       // v36: work out the new values, but leave anything you did not touch
       // exactly as it was — no more wiping collections and tags by accident.
@@ -2348,11 +2361,11 @@
       }
       if (!Object.keys(body).length) { saved.push(id); continue; } // nothing to change
       try {
-        const updated = await api(`/api/items/${id}`, { method: "PATCH", body });
+        const updated = await saveOrganizeChange(id, body);
         const idx = state.items.findIndex((i) => i.id === id);
         if (idx >= 0) state.items[idx] = updated;
         saved.push(id);
-      } catch { failed.push(id); }
+      } catch (e) { lastFailure = e; failed.push(id); }
     }
     btn.disabled = false; btn.textContent = "Save";
     const undoSaved = {
@@ -2382,7 +2395,8 @@
     const sub = $("#orgSub"); if (sub) sub.textContent = `${failed.length} video${failed.length === 1 ? "" : "s"} still need${failed.length === 1 ? "s" : ""} saving`;
     renderOrg();
     if (state.selecting) { state.selected = new Set(failed); updateBulkCount(); }
-    toast(`Saved ${saved.length} of ${ids.length} — ${failed.length} failed. Failed videos stay selected.`, saved.length ? undoSaved : undefined);
+    const why = lastFailure?.status === 401 ? "Please sign in again." : lastFailure?.status === 429 ? "Too many requests; try again shortly." : !lastFailure?.status ? "Connection problem; check your internet and try again." : lastFailure.status >= 500 ? "The service had a problem; try again shortly." : (lastFailure?.message || "Please try again.");
+    toast(`Saved ${saved.length} of ${ids.length} — ${failed.length} failed. ${why} Your selection is kept.`, saved.length ? undoSaved : undefined);
   }
   async function bulkFav() {
     const ids = [...state.selected];
