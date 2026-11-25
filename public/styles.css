@@ -1422,7 +1422,8 @@ body.tv-mode .collection-hide-choice { min-height: 48px; font-size: 17px; }
 body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }
 
 /* Clip Instagram reels to the measured picture, hiding header/footer overflow. */
-.ig-window.cropping.ig-reel-crop {
+.ig-window.cropping.ig-reel-crop,
+.ig-window.cropping.ig-post-crop {
   inset: auto !important;
   left: var(--ig-left) !important; top: var(--ig-top) !important;
   width: var(--ig-width) !important; height: var(--ig-height) !important;

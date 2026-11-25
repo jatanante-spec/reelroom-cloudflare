@@ -4,7 +4,7 @@ test('Instagram reels use a fitted and clipped preview with foldable captions',(
  assert.match(app,/reel: \{ top: 0\.1125, w: 1\.0000, h: 1\.2500 \}/);
  assert.match(app,/aspectCache\.get\(item\?\.id\)/);assert.match(app,/const pictureW = aspect \? Math\.min\(1, 1\.25 \* aspect\) : 1/);
  assert.match(css,/\.ig-window\.cropping\.ig-reel-crop/);assert.match(app,/ig-reel-crop/);
- assert.match(app,/item\.platform === "instagram" && item\.media_type === "reel"/);
+ assert.match(app,/const folded = item\.platform === "instagram"/);
  assert.match(app,/postText\.classList\.toggle\("folded", folded\)/);
  assert.match(app,/setAttribute\("aria-expanded", String\(!folded\)\)/);
 });

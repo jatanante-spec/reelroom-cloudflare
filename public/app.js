@@ -731,6 +731,7 @@
     }
     if (idx === -1) return;
     state.returnFocusId = id;
+    state.captionItemId = null;
     state.playerIndex = idx;
     state.fbUseAlt = false;
     state.useBackup = null;
@@ -919,7 +920,7 @@
   const IG_RENDER_W = 480;
   const IG_GEOM = {
     reel: { top: 0.1125, w: 1.0000, h: 1.2500 },  // 54px header, 480x600 picture
-    post: { top: 0.143, w: 0.9200, h: 0.6050 },  // carousels/photos: wider, more padding
+    post: { top: 0.1125, w: 1.0000, h: 1.7500 }, // safe fallback when cover size is unavailable
   };
   function igKind(item) { return item && item.media_type === "reel" ? "reel" : "post"; }
   function igCropActive() { return inFullscreen() && state.igActive && !prefs.igFullPost; }
@@ -935,6 +936,7 @@
     const item = currentList()[state.playerIndex];
     const kind = igKind(item);
     win.classList.toggle("ig-reel-crop", crop && kind === "reel");
+    win.classList.toggle("ig-post-crop", crop && kind === "post");
     if (!crop) {
       frame.style.width = "100%";
       frame.style.height = "100%";
@@ -944,10 +946,11 @@
     const base = IG_GEOM[kind];
     // The embed's 4:5 media box letterboxes different reel shapes. Measure
     // the saved cover when available, otherwise show the whole box safely.
-    const aspect = kind === "reel" ? aspectCache.get(item?.id) : null;
+    const aspect = aspectCache.get(item?.id);
     const pictureW = aspect ? Math.min(1, 1.25 * aspect) : 1;
     const pictureH = aspect ? Math.min(1.25, 1 / aspect) : 1.25;
-    const G = kind === "reel" ? { top: base.top + (1.25 - pictureH) / 2, w: pictureW, h: pictureH } : base;
+    const G = kind === "reel" ? { top: base.top + (1.25 - pictureH) / 2, w: pictureW, h: pictureH }
+      : { top: base.top, w: 1, h: aspect ? Math.min(1.75, Math.max(0.5, 1 / aspect)) : base.h };
     const adj = (prefs.igAdjust && prefs.igAdjust[kind]) || { zoom: 1, dy: 0 };
     const Wi = IG_RENDER_W, Hi = Wi * 2;   // 2:1 reproduces the measured page proportions
     const Vw = G.w * Wi, Vh = G.h * Wi;
@@ -959,7 +962,7 @@
     const ty = (Hc - Vh * k) / 2 - Vy * k + (adj.dy || 0) * Hc;
     frame.style.width = Wi + "px";
     frame.style.height = Hi + "px";
-    if (kind === "reel") {
+    if (kind === "reel" || kind === "post") {
       // Clip to the picture itself, not the whole screen: otherwise Instagram's
       // header and footer leak into the black space above and below the reel.
       win.style.setProperty("--ig-left", ((Wc - Vw*k) / 2).toFixed(1) + "px");
@@ -977,7 +980,7 @@
     if (what === "zoom") a.zoom = Math.min(2.5, Math.max(0.5, (a.zoom || 1) * (dir > 0 ? 1.06 : 1 / 1.06)));
     if (what === "dy") a.dy = Math.min(0.4, Math.max(-0.4, (a.dy || 0) + dir * 0.02));
     if (what === "reset") { a.zoom = 1; a.dy = 0; }
-    savePrefs(); layoutInstagram();
+    savePrefs(); layoutInstagram(); layoutSwipeZones();
   }
 
   function syncIgButtons() {
@@ -1579,11 +1582,25 @@
     const cx = V.left + V.width / 2, cy = V.top + V.height / 2;
     const holeTop = Math.max(0, cy - hole / 2), holeBottom = Math.min(H, cy + hole / 2);
     const controlTop = Math.max(holeBottom, V.bottom - swipeControlBarHeight());
+    const it = currentList()[state.playerIndex];
+    const instagramPost = state.igActive && isPostItem(it);
     const set = (sel, x, y, w, h) => {
       const el = layer.querySelector(sel); if (!el) return;
       el.style.left = Math.max(0, x) + "px"; el.style.top = Math.max(0, y) + "px";
       el.style.width = Math.max(0, w) + "px"; el.style.height = Math.max(0, h) + "px";
     };
+    if (instagramPost) {
+      // Leave both sides of an Instagram post uncovered so its carousel
+      // arrows and horizontal swipes reach Instagram; centre Play stays open.
+      const inset = Math.min(64, V.width * 0.22);
+      const left = Math.max(0, V.left + inset), right = Math.min(W, V.left + V.width - inset);
+      set(".swipe-zone-top", left, 0, Math.max(0, right-left), holeTop);
+      set(".swipe-zone-left", left, holeTop, Math.max(0, cx-hole/2-left), holeBottom-holeTop);
+      set(".swipe-zone-right", cx+hole/2, holeTop, Math.max(0, right-cx-hole/2), holeBottom-holeTop);
+      set(".swipe-zone-bottom", left, holeBottom, Math.max(0, right-left), Math.max(0, controlTop-holeBottom));
+      set(".swipe-zone-letter", 0, Math.min(H, V.bottom), W, Math.max(0, H-V.bottom));
+      return;
+    }
     set(".swipe-zone-top", 0, 0, W, holeTop);
     set(".swipe-zone-left", 0, holeTop, Math.max(0, cx - hole / 2), holeBottom - holeTop);
     set(".swipe-zone-right", cx + hole / 2, holeTop, Math.max(0, W - (cx + hole / 2)), holeBottom - holeTop);
@@ -1685,9 +1702,9 @@
       postText.hidden = !txt;
       if (state.captionItemId !== item.id) {
         state.captionItemId = item.id;
-        // Keep Instagram reel captions available, but out of the picture until
-        // the viewer chooses to read them. Picture-post captions stay open.
-        const folded = item.platform === "instagram" && item.media_type === "reel";
+        // Keep Instagram captions available but folded until requested. Other
+        // providers' picture-post captions stay open as before.
+        const folded = item.platform === "instagram";
         postText.classList.toggle("folded", folded);
         $("#postTextToggle").setAttribute("aria-expanded", String(!folded));
       }
@@ -1768,9 +1785,9 @@
       : `<div style="padding:40px;color:#aaa;">No embed available. Use “Open original”.</div>`;
     if (state.igActive) {
       layoutInstagram();
-      if (igKind(item) === "reel") measureAspect(item).then(aspect => {
+      measureAspect(item).then(aspect => {
         const current = currentList()[state.playerIndex];
-        if (aspect && state.igActive && current?.id === item.id && !$("#playerModal").hidden) layoutInstagram();
+        if (aspect && state.igActive && current?.id === item.id && !$("#playerModal").hidden) { layoutInstagram(); layoutSwipeZones(); }
       });
     }
     syncIgButtons();
