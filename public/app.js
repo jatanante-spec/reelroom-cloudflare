@@ -913,14 +913,12 @@
   }
 
   // ===== v10: Instagram crop geometry =====
-  // Measured from real embeds on a 411px-wide viewport, confirmed identical on two
-  // reels and at two pixel densities (agreement within 0.2 percentage points).
-  // Everything is a fraction of the IFRAME's own width, so we render the frame at
-  // a fixed known width and scale the result — that keeps the crop identical on a
-  // phone, a tablet and a TV, and sidesteps Instagram's own 480px card cap.
+  // Instagram changes its embed layout over time. At a 480px frame the
+  // current reel picture is 480x600 below a 54px header. These are fallback
+  // estimates; Instagram controls the cross-origin content and may change it.
   const IG_RENDER_W = 480;
   const IG_GEOM = {
-    reel: { top: 0.052, w: 0.7035, h: 1.2500 },  // header 5.2%, video 70.35% x 125%
+    reel: { top: 0.1125, w: 1.0000, h: 1.2500 },  // 54px header, 480x600 picture
     post: { top: 0.143, w: 0.9200, h: 0.6050 },  // carousels/photos: wider, more padding
   };
   function igKind(item) { return item && item.media_type === "reel" ? "reel" : "post"; }
@@ -934,15 +932,22 @@
     const crop = igCropActive();
     win.classList.toggle("cropping", crop);
     win.classList.toggle("fullpost", inFullscreen() && state.igActive && !!prefs.igFullPost);
+    const item = currentList()[state.playerIndex];
+    const kind = igKind(item);
+    win.classList.toggle("ig-reel-crop", crop && kind === "reel");
     if (!crop) {
       frame.style.width = "100%";
       frame.style.height = "100%";
       frame.style.transform = "none";
       return;
     }
-    const item = currentList()[state.playerIndex];
-    const kind = igKind(item);
-    const G = IG_GEOM[kind];
+    const base = IG_GEOM[kind];
+    // The embed's 4:5 media box letterboxes different reel shapes. Measure
+    // the saved cover when available, otherwise show the whole box safely.
+    const aspect = kind === "reel" ? aspectCache.get(item?.id) : null;
+    const pictureW = aspect ? Math.min(1, 1.25 * aspect) : 1;
+    const pictureH = aspect ? Math.min(1.25, 1 / aspect) : 1.25;
+    const G = kind === "reel" ? { top: base.top + (1.25 - pictureH) / 2, w: pictureW, h: pictureH } : base;
     const adj = (prefs.igAdjust && prefs.igAdjust[kind]) || { zoom: 1, dy: 0 };
     const Wi = IG_RENDER_W, Hi = Wi * 2;   // 2:1 reproduces the measured page proportions
     const Vw = G.w * Wi, Vh = G.h * Wi;
@@ -954,7 +959,15 @@
     const ty = (Hc - Vh * k) / 2 - Vy * k + (adj.dy || 0) * Hc;
     frame.style.width = Wi + "px";
     frame.style.height = Hi + "px";
-    frame.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
+    if (kind === "reel") {
+      // Clip to the picture itself, not the whole screen: otherwise Instagram's
+      // header and footer leak into the black space above and below the reel.
+      win.style.setProperty("--ig-left", ((Wc - Vw*k) / 2).toFixed(1) + "px");
+      win.style.setProperty("--ig-top", ((Hc - Vh*k) / 2 + (adj.dy || 0)*Hc).toFixed(1) + "px");
+      win.style.setProperty("--ig-width", (Vw*k).toFixed(1) + "px");
+      win.style.setProperty("--ig-height", (Vh*k).toFixed(1) + "px");
+      frame.style.transform = "translate(" + (-Vx*k).toFixed(1) + "px," + (-Vy*k).toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
+    } else frame.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
   }
 
   function nudgeInstagram(what, dir) {
@@ -1670,6 +1683,14 @@
     if (postText) {
       const txt = String(item.post_text || "").trim();
       postText.hidden = !txt;
+      if (state.captionItemId !== item.id) {
+        state.captionItemId = item.id;
+        // Keep Instagram reel captions available, but out of the picture until
+        // the viewer chooses to read them. Picture-post captions stay open.
+        const folded = item.platform === "instagram" && item.media_type === "reel";
+        postText.classList.toggle("folded", folded);
+        $("#postTextToggle").setAttribute("aria-expanded", String(!folded));
+      }
       const body = $("#playerPostTextBody");
       if (body) body.textContent = txt;
     }
@@ -1745,7 +1766,13 @@
           ? `<div class="${cls} ig-window" id="igWindow">${frameHtml}</div>`
           : `<div class="${cls}" id="stageBox">${frameHtml}</div>`)
       : `<div style="padding:40px;color:#aaa;">No embed available. Use “Open original”.</div>`;
-    if (state.igActive) layoutInstagram();
+    if (state.igActive) {
+      layoutInstagram();
+      if (igKind(item) === "reel") measureAspect(item).then(aspect => {
+        const current = currentList()[state.playerIndex];
+        if (aspect && state.igActive && current?.id === item.id && !$("#playerModal").hidden) layoutInstagram();
+      });
+    }
     syncIgButtons();
 
     state.fbAutoFit = item.platform === "facebook" && !useBackup && !embed.includes("/plugins/post.php");
