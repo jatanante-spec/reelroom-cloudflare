@@ -1428,3 +1428,8 @@ body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }
   left: var(--ig-left) !important; top: var(--ig-top) !important;
   width: var(--ig-width) !important; height: var(--ig-height) !important;
 }
+
+/* LinkedIn posts are tall; keep the original-link fallback visible. */
+.link-modal.linkedin-post { width: min(650px, 96vw); }
+.link-modal.linkedin-post .modal-head h2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.link-modal.linkedin-post .link-frame { aspect-ratio: auto; height: min(55vh, 580px); }

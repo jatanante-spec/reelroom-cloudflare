@@ -2180,30 +2180,48 @@
       render();
     } catch { /* a missed tick is not worth interrupting the user */ }
   }
-  function openLink(id) {
+  function isLinkedInLink(raw) {
+    try { const u = new URL(raw), h = u.hostname.toLowerCase(); return u.protocol === "https:" && (h === "linkedin.com" || h.endsWith(".linkedin.com") || h === "lnkd.in" || h === "www.lnkd.in"); } catch { return false; }
+  }
+  let linkOpenSequence = 0;
+  async function openLink(id) {
     const item = state.items.find((i) => i.id === id);
     if (!item) return;
     const url = safeUrl(item.canonical_url || item.url);
     if (!url) return;
+    const isLinkedIn = isLinkedInLink(url), sequence = ++linkOpenSequence;
     const frameable = item.web_frameable === true;
     const title = $("#linkTitle"), sub = $("#linkSub"), note = $("#linkNote");
     const wrap = $("#linkFrameWrap"), frame = $("#linkFrame"), openBtn = $("#linkOpenBtn");
+    const modal = $("#linkModal");
     if (title) title.textContent = displayTitle(item);
-    if (sub) sub.textContent = [item.web_host || hostOf(url), item.collection].filter(Boolean).join(" · ");
-    if (openBtn) { openBtn.href = url; openBtn.setAttribute("href", url); }
-    if (wrap) wrap.hidden = !frameable;
-    if (frame) frame.src = frameable ? url : "about:blank";
-    if (note) {
-      note.textContent = frameable
-        ? "Showing the page inside ReelRoom. Use the button below to open it in your browser instead."
-        : "This site does not allow pages to be shown inside apps, so it opens in your browser.";
-    }
+    if (sub) sub.textContent = [isLinkedIn ? "LinkedIn" : (item.web_host || hostOf(url)), item.collection].filter(Boolean).join(" · ");
+    if (openBtn) { openBtn.href = url; openBtn.setAttribute("href", url); openBtn.textContent = isLinkedIn ? "Open original" : "Open in browser"; }
+    modal.querySelector(".link-modal").classList.toggle("linkedin-post", isLinkedIn);
+    if (wrap) wrap.hidden = isLinkedIn || !frameable;
+    if (frame) frame.src = !isLinkedIn && frameable ? url : "about:blank";
+    if (note) note.textContent = isLinkedIn ? "Loading the LinkedIn post…" : frameable ? "Showing the page inside ReelRoom. Use the button below to open it in your browser instead." : "This site does not allow pages to be shown inside apps, so it opens in your browser.";
     state.linkId = id;
-    $("#linkModal").hidden = false;
+    modal.hidden = false;
     updateDock();
     markVisited(item);
+    if (isLinkedIn) {
+      try {
+        const result = await api(`/api/items/${id}/linkedin-embed`);
+        if (sequence !== linkOpenSequence || state.linkId !== id || modal.hidden) return;
+        const embed = safeUrl(result?.embed_url);
+        // Only our fixed LinkedIn embed path can ever reach the frame.
+        if (embed && /^https:\/\/www\.linkedin\.com\/embed\/feed\/update\/urn:li:(?:activity|share|ugcPost):\d{13,25}$/.test(embed)) {
+          wrap.hidden = false; frame.src = embed; frame.title = "LinkedIn post";
+          note.textContent = "LinkedIn may require sign-in or restrict some posts. If it doesn’t appear, use Open original.";
+          return;
+        }
+      } catch { if (sequence !== linkOpenSequence || state.linkId !== id || modal.hidden) return; }
+      note.textContent = "This LinkedIn post couldn’t be displayed here. Use Open original to view it.";
+      return;
+    }
     if (!frameable) {
-      // v37: fall back to the browser straight away — no blank box, no guessing.
+      // Existing website behavior: fall back to the browser immediately.
       try { window.open(url, "_blank", "noopener"); } catch {}
       toast("Opened in your browser");
     }
@@ -3751,7 +3769,7 @@
     // v37: the saved-link sheet
     const closeLink = () => {
       const f = $("#linkFrame"); if (f) f.src = "about:blank";
-      state.linkId = null;
+      state.linkId = null; linkOpenSequence++;
     };
     const linkSheet = $("#linkModal");
     if (linkSheet) linkSheet.addEventListener("click", (e) => {
