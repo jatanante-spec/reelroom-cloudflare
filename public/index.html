@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="ReelRoom">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="stylesheet" href="styles.css?v=38-linkedin-view">
+<link rel="stylesheet" href="styles.css?v=38-linkedin-immersive">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d4d'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -464,6 +464,7 @@
 <!-- v37: saved website sheet -->
 <div class="modal-backdrop" id="linkModal" hidden>
   <div class="modal link-modal" role="dialog" aria-modal="true" aria-label="Saved link">
+    <button type="button" class="link-controls-toggle" id="linkControlsToggle" aria-label="Show post controls" aria-expanded="false" hidden>⋯</button>
     <div class="modal-head">
       <h2 id="linkTitle">Saved link</h2>
       <button class="icon-btn" data-close="linkModal" aria-label="Close saved link">✕</button>
@@ -648,6 +649,6 @@
 
 <button class="to-top" id="toTopBtn" title="Back to top" aria-label="Back to top" hidden>↑</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastText"></span><button class="toast-action" id="toastAction" hidden></button></div>
-<script src="app.js?v=38-linkedin-view"></script>
+<script src="app.js?v=38-linkedin-immersive"></script>
 </body>
 </html>

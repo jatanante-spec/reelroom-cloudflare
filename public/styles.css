@@ -1429,17 +1429,32 @@ body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }
   width: var(--ig-width) !important; height: var(--ig-height) !important;
 }
 
-/* LinkedIn posts use a spacious viewer, separate from ordinary website sheets. */
+/* Immersive LinkedIn viewing. The small overlay is outside the cross-origin
+   iframe so it remains reachable without intercepting post scrolling. */
 #linkModal.linkedin-view { padding: 0; background: #0f0f0f; }
 .link-modal.linkedin-post {
-  box-sizing: border-box; display: flex; flex-direction: column;
-  width: 100%; max-width: none; height: 100%; max-height: none;
-  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  position: relative; box-sizing: border-box; display: flex; flex-direction: column;
+  width: 100%; max-width: none; height: 100%; max-height: none; padding: 0;
   border: 0; border-radius: 0; overflow: hidden; background: #0f0f0f;
 }
-.link-modal.linkedin-post .modal-head { flex: none; margin: 0 auto 5px; width: 100%; max-width: 720px; gap: 12px; }
-.link-modal.linkedin-post .modal-head h2 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; }
-.link-modal.linkedin-post .org-sub { display: none; }
-.link-modal.linkedin-post .link-frame { flex: 1 1 auto; min-height: 0; width: 100%; max-width: 720px; margin: 0 auto; aspect-ratio: auto; height: auto; border-radius: 8px; }
-.link-modal.linkedin-post .link-note { flex: none; width: 100%; max-width: 720px; margin: 6px auto; font-size: 11px; }
-.link-modal.linkedin-post .link-actions { flex: none; width: 100%; max-width: 720px; margin: 0 auto; }
+.link-controls-toggle { display: none; }
+.linkedin-post .link-controls-toggle {
+  display: block; position: absolute; z-index: 4;
+  top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right));
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid #aaa;
+  background: rgba(20,20,20,.83); color: white; font-size: 25px; line-height: 1; cursor: pointer;
+}
+.linkedin-post .modal-head, .linkedin-post .link-actions, .linkedin-post .link-note {
+  position: absolute; z-index: 3; left: 0; right: 0; box-sizing: border-box;
+  max-width: 720px; margin: 0 auto; color: white; background: rgba(15,15,15,.94);
+}
+.linkedin-post .modal-head { top: 0; padding: max(8px, env(safe-area-inset-top)) 58px 8px 12px; gap: 12px; }
+.linkedin-post .modal-head h2 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; }
+.linkedin-post .org-sub { display: none; }
+.linkedin-post .link-frame { flex: 1 1 auto; min-height: 0; width: 100%; max-width: 720px; margin: 0 auto; aspect-ratio: auto; height: auto; border: 0; border-radius: 0; }
+.linkedin-post .link-note { bottom: 62px; padding: 8px 12px; font-size: 11px; }
+.linkedin-post .link-actions { bottom: 0; padding: 8px 12px max(8px, env(safe-area-inset-bottom)); }
+#linkModal.link-controls-hidden .linkedin-post .modal-head,
+#linkModal.link-controls-hidden .linkedin-post .link-note,
+#linkModal.link-controls-hidden .linkedin-post .link-actions { visibility: hidden; pointer-events: none; }
+.linkedin-post .link-controls-toggle:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }

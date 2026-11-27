@@ -2183,7 +2183,13 @@
   function isLinkedInLink(raw) {
     try { const u = new URL(raw), h = u.hostname.toLowerCase(); return u.protocol === "https:" && (h === "linkedin.com" || h.endsWith(".linkedin.com") || h === "lnkd.in" || h === "www.lnkd.in"); } catch { return false; }
   }
-  let linkOpenSequence = 0;
+  let linkOpenSequence = 0, linkControlsTimer = null;
+  function setLinkedInControls(show) {
+    const modal = $("#linkModal"), toggle = $("#linkControlsToggle");
+    if (!modal || !modal.classList.contains("linkedin-view")) return;
+    modal.classList.toggle("link-controls-hidden", !show);
+    if (toggle) { toggle.setAttribute("aria-expanded", String(show)); toggle.setAttribute("aria-label", show ? "Hide post controls" : "Show post controls"); }
+  }
   async function openLink(id) {
     const item = state.items.find((i) => i.id === id);
     if (!item) return;
@@ -2197,7 +2203,11 @@
     if (title) title.textContent = displayTitle(item);
     if (sub) sub.textContent = [isLinkedIn ? "LinkedIn" : (item.web_host || hostOf(url)), item.collection].filter(Boolean).join(" · ");
     if (openBtn) { openBtn.href = url; openBtn.setAttribute("href", url); openBtn.textContent = isLinkedIn ? "Open original" : "Open in browser"; }
+    clearTimeout(linkControlsTimer);
     modal.classList.toggle("linkedin-view", isLinkedIn);
+    modal.classList.remove("link-controls-hidden");
+    const controlsToggle = $("#linkControlsToggle");
+    if (controlsToggle) { controlsToggle.hidden = !isLinkedIn; controlsToggle.setAttribute("aria-expanded", "true"); controlsToggle.setAttribute("aria-label", "Hide post controls"); }
     modal.querySelector(".link-modal").classList.toggle("linkedin-post", isLinkedIn);
     if (wrap) wrap.hidden = isLinkedIn || !frameable;
     if (frame) frame.src = !isLinkedIn && frameable ? url : "about:blank";
@@ -2215,6 +2225,9 @@
         if (embed && /^https:\/\/www\.linkedin\.com\/embed\/feed\/update\/urn:li:(?:activity|share|ugcPost):\d{13,25}$/.test(embed)) {
           wrap.hidden = false; frame.src = embed; frame.title = "LinkedIn post";
           note.textContent = "LinkedIn may require sign-in or restrict some posts. If it doesn’t appear, use Open original.";
+          linkControlsTimer = setTimeout(() => {
+            if (sequence === linkOpenSequence && !modal.hidden && !document.activeElement?.closest?.(".link-modal .modal-head, .link-modal .link-actions")) setLinkedInControls(false);
+          }, 2500);
           return;
         }
       } catch { if (sequence !== linkOpenSequence || state.linkId !== id || modal.hidden) return; }
@@ -3770,11 +3783,16 @@
     // v37: the saved-link sheet
     const closeLink = () => {
       const f = $("#linkFrame"); if (f) f.src = "about:blank";
-      state.linkId = null; linkOpenSequence++;
+      state.linkId = null; linkOpenSequence++; clearTimeout(linkControlsTimer);
     };
     const linkSheet = $("#linkModal");
     if (linkSheet) linkSheet.addEventListener("click", (e) => {
       if (e.target === linkSheet || e.target.closest("[data-close='linkModal']")) closeLink();
+    });
+    const linkControlsToggle = $("#linkControlsToggle");
+    if (linkControlsToggle) linkControlsToggle.addEventListener("click", () => {
+      clearTimeout(linkControlsTimer);
+      setLinkedInControls(linkSheet.classList.contains("link-controls-hidden"));
     });
     const linkCopy = $("#linkCopyBtn");
     if (linkCopy) linkCopy.addEventListener("click", async () => {

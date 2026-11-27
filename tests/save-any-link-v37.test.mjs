@@ -94,18 +94,18 @@ test("tapping a link opens the link sheet, never the player", () => {
 
 test("a site that refuses to be framed opens in the browser instead", () => {
   const fn = appjs.slice(appjs.indexOf("function openLink(id)"));
-  assert.match(fn.slice(0, 1600), /item\.web_frameable === true/);
-  assert.match(fn.slice(0, 1600), /does not allow pages to be shown inside apps/);
+  assert.match(fn.slice(0, 2600), /item\.web_frameable === true/);
+  assert.match(fn.slice(0, 2600), /does not allow pages to be shown inside apps/);
   assert.match(fn.slice(0, 4000), /window\.open\(url, "_blank", "noopener"\)/);
   // the preview is only shown when the site allows it
-  assert.match(fn.slice(0, 1600), /wrap\.hidden = isLinkedIn \|\| !frameable;/);
+  assert.match(fn.slice(0, 2600), /wrap\.hidden = isLinkedIn \|\| !frameable;/);
 });
 
 test("opening a link marks it as visited", () => {
   assert.match(appjs, /async function markVisited\(item\)/);
   assert.match(appjs, /method: "PATCH", body: \{ visited: true \}/);
   const fn = appjs.slice(appjs.indexOf("function openLink(id)"));
-  assert.match(fn.slice(0, 1600), /markVisited\(item\)/);
+  assert.match(fn.slice(0, 2600), /markVisited\(item\)/);
 });
 
 test("the video player steps over links", () => {
