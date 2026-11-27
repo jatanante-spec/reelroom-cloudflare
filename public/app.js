@@ -2197,6 +2197,7 @@
     if (title) title.textContent = displayTitle(item);
     if (sub) sub.textContent = [isLinkedIn ? "LinkedIn" : (item.web_host || hostOf(url)), item.collection].filter(Boolean).join(" · ");
     if (openBtn) { openBtn.href = url; openBtn.setAttribute("href", url); openBtn.textContent = isLinkedIn ? "Open original" : "Open in browser"; }
+    modal.classList.toggle("linkedin-view", isLinkedIn);
     modal.querySelector(".link-modal").classList.toggle("linkedin-post", isLinkedIn);
     if (wrap) wrap.hidden = isLinkedIn || !frameable;
     if (frame) frame.src = !isLinkedIn && frameable ? url : "about:blank";
