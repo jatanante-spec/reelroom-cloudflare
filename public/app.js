@@ -166,7 +166,11 @@
   const META_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
   function needsMeta(item) {
     if (item.metadata_status === "pending") return true;
-    if (item.platform === "web" && isLinkedInLink(item.canonical_url || item.url) && !item.linkedin_preview_checked && !item.thumbnail_custom && !item.thumbnail_url) return true;
+    if (item.platform === "web" && isLinkedInLink(item.canonical_url || item.url) && !item.thumbnail_custom && !(item.linkedin_preview_version >= 2)) {
+      let generic = !item.thumbnail_url;
+      try { generic ||= new URL(item.thumbnail_url).hostname.toLowerCase() === "static.licdn.com"; } catch {}
+      if (generic) return true;
+    }
     if (!["youtube", "tiktok", "instagram", "facebook"].includes(item.platform)) return false;
     // v38: a post's caption is fetched once, together with the rest of its
     // details. Once it has been looked for, it is never looked for again —
