@@ -166,6 +166,7 @@
   const META_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
   function needsMeta(item) {
     if (item.metadata_status === "pending") return true;
+    if (item.platform === "web" && isLinkedInLink(item.canonical_url || item.url) && !item.linkedin_preview_checked && !item.thumbnail_custom && !item.thumbnail_url) return true;
     if (!["youtube", "tiktok", "instagram", "facebook"].includes(item.platform)) return false;
     // v38: a post's caption is fetched once, together with the rest of its
     // details. Once it has been looked for, it is never looked for again —
@@ -464,9 +465,12 @@
   function thumbHtml(item) {
     // v37: a saved website shows a globe, not a play button.
     if (isLinkItem(item)) {
+      const linkedin = isLinkedInLink(item.canonical_url || item.url);
+      const image = linkedin ? thumbnailFor(item) : "";
       return `<div class="thumb thumb-web">
         <span class="web-globe" aria-hidden="true">🌐</span>
-        <span class="badge web">Website</span>
+        ${image ? `<img src="${esc(image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+        <span class="badge ${linkedin ? "linkedin" : "web"}">${linkedin ? "LinkedIn" : "Website"}</span>
         <span class="type-badge">Page</span>
         ${item.visited ? '<span class="watched-mark">✓ visited</span>' : ""}
         <div class="play-overlay link-open"><span>↗</span></div>

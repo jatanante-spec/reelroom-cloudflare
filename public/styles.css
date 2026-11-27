@@ -1458,3 +1458,8 @@ body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }
 #linkModal.link-controls-hidden .linkedin-post .link-note,
 #linkModal.link-controls-hidden .linkedin-post .link-actions { visibility: hidden; pointer-events: none; }
 .linkedin-post .link-controls-toggle:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+/* LinkedIn previews use the public post image; globe remains the fallback. */
+.thumb-web .web-globe { position: absolute; z-index: 0; }
+.thumb-web .watched-mark { position: absolute; z-index: 2; bottom: 8px; left: 8px; background: rgba(0,0,0,.7); border-radius: 5px; padding: 2px 5px; }
+.badge.linkedin { background: #0a66c2; }
