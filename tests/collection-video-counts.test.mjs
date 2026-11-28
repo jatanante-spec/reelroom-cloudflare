@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+test('collection video counts use the entire library and exclude web links and photo posts',()=>{const s=app.slice(app.indexOf('function renderCollections()'),app.indexOf('// ---- v30: rename'));assert.match(s,/for \(const item of state\.items\)/);assert.match(s,/!isLinkItem\(item\) && !isPostItem\(item\)/);assert.match(s,/videoCounts\.get\(c\) \|\| 0/);assert.match(s,/collection-video-count/);assert.match(s,/countLabel/);assert.match(html,/<span title="Number of videos">Videos<\/span>/)});

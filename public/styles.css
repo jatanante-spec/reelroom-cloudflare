@@ -1463,3 +1463,12 @@ body.tv-mode .collection-hide-choice input { width: 22px; height: 22px; }
 .thumb-web .web-globe { position: absolute; z-index: 0; }
 .thumb-web .watched-mark { position: absolute; z-index: 2; bottom: 8px; left: 8px; background: rgba(0,0,0,.7); border-radius: 5px; padding: 2px 5px; }
 .badge.linkedin { background: #0a66c2; }
+
+/* Collection counts show all videos, even in hidden collections. */
+.collection-row .side-link { gap: 6px; }
+.collection-row .side-ico { flex: 0 0 20px; margin-right: 4px; }
+.collection-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collection-hidden-label { flex: none; margin-left: 0; }
+.collection-video-count { flex: none; margin-left: auto; color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+
+.collection-heading { display: flex; justify-content: space-between; padding-right: 51px; }

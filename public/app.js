@@ -345,6 +345,10 @@
   function renderCollections() {
     const cols = [...new Set(state.items.map((i) => i.collection).filter(Boolean))].sort();
     const wrap = $("#collectionList");
+    const videoCounts = new Map();
+    for (const item of state.items) {
+      if (item.collection && !isLinkItem(item) && !isPostItem(item)) videoCounts.set(item.collection, (videoCounts.get(item.collection) || 0) + 1);
+    }
     const choices = $("#collectionHideChoices");
     choices.innerHTML = cols.length ? cols.map(c => `<label class="collection-hide-choice"><input type="checkbox" data-hide-collection="${esc(c)}" ${hiddenCollections().includes(c) ? "checked" : ""}><span>Hide ${esc(c)}</span></label>`).join("") : `<p>No collections yet.</p>`;
     choices.querySelectorAll("input").forEach(input => input.addEventListener("change", () => {
@@ -355,7 +359,11 @@
     }));
     $("#collectionShowAll").disabled = !hiddenCollections().length;
     wrap.innerHTML = cols.length
-      ? cols.map((c) => `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}"><span class="side-ico">📁</span> ${esc(c)}${hiddenCollections().includes(c) ? ' <span class="collection-hidden-label">hidden</span>' : ""}</button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`).join("")
+      ? cols.map((c) => {
+        const n = videoCounts.get(c) || 0, hidden = hiddenCollections().includes(c);
+        const countLabel = `${n} video${n === 1 ? "" : "s"}`;
+        return `<div class="collection-row"><button class="side-link ${state.collection === c ? "active" : ""}" data-collection="${esc(c)}" aria-label="${esc(c)}, ${countLabel}${hidden ? ", hidden" : ""}" title="${esc(c)} · ${countLabel}${hidden ? " · hidden" : ""}"><span class="side-ico" aria-hidden="true">📁</span><span class="collection-name">${esc(c)}</span>${hidden ? '<span class="collection-hidden-label">hidden</span>' : ""}<span class="collection-video-count" aria-hidden="true">${n}</span></button><button class="side-rename" data-rename="${esc(c)}" title="Rename collection" aria-label="Rename ${esc(c)}">✎</button></div>`;
+      }).join("")
       : `<div class="side-footer" style="margin:0;padding:4px 12px;">No collections yet</div>`;
     wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
       if (state.forYouOpen) closeForYou();
